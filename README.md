@@ -27,12 +27,28 @@ Assistant erhalten.
 
 ## Installation
 
-### Manuelle Installation über GitHub
+### Bevorzugt: Installation über HACS
+
+Voraussetzung ist eine bereits eingerichtete HACS-Installation.
+
+1. Öffne **HACS** in Home Assistant.
+2. Öffne oben rechts das Drei-Punkte-Menü und wähle
+   **Benutzerdefinierte Repositories**.
+3. Trage als Repository
+   `https://github.com/jan-brinkmann/ha-manual-energy-metering` ein.
+4. Wähle als Typ **Integration** und füge das Repository hinzu.
+5. Öffne in HACS **Manual Energy Metering**, wähle **Herunterladen** und
+   installiere die neueste veröffentlichte Version.
+6. Starte Home Assistant vollständig neu.
+7. Öffne **Einstellungen > Geräte & Dienste > Integration hinzufügen** und wähle
+   **Manuelle Energiemessung**.
+8. Lege für jeden physischen Zähler einen eigenen Integrationseintrag an.
+
+### Alternative: Manuelle Installation über GitHub
 
 1. Öffne auf GitHub die Seite **Releases** dieses Repositorys.
 2. Lade unter dem neuesten Release das Archiv **Source code (zip)** herunter und
-   entpacke es. Falls noch kein Release vorhanden ist, kannst du ersatzweise über
-   **Code > Download ZIP** den aktuellen Entwicklungsstand herunterladen.
+   entpacke es.
 3. Kopiere aus dem entpackten Repository den vollständigen Ordner
    `custom_components/manual_energy_metering` nach
    `<Konfigurationsverzeichnis>/custom_components/manual_energy_metering`.
@@ -48,10 +64,19 @@ Assistant erhalten.
 7. Lege für jeden physischen Zähler einen eigenen Integrationseintrag an.
 
 Anschließend erscheint **Manuelle Energiemessung** im Reiter **Integrationen** als
-eigene Kachel. Nach einem Klick auf die Kachel, erscheint für jeden angelegten Zähler
-ein separater Konfigurationseintrag. 
+eigene Kachel. Nach einem Klick auf die Kachel erscheint für jeden angelegten
+Zähler ein separater Konfigurationseintrag.
 
 ## Aktualisierung
+
+### Aktualisierung über HACS
+
+1. Öffne **HACS** und dort **Manual Energy Metering**.
+2. Lade die von HACS angebotene neue Release-Version herunter.
+3. Starte Home Assistant vollständig neu, sobald HACS den ausstehenden Neustart
+   anzeigt.
+
+### Manuelle Aktualisierung
 
 1. Lade das Archiv des gewünschten, vorzugsweise neuesten GitHub-Releases herunter
    und entpacke es.

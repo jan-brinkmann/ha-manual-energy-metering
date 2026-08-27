@@ -1,0 +1,64 @@
+{
+  "title": "Manual Energy Metering",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Create a manual meter",
+        "description": "Create one entity for this utility meter.",
+        "data": {
+          "name": "Name",
+          "meter_type": "Meter type"
+        }
+      },
+      "unit": {
+        "title": "Choose the electricity unit",
+        "data": {
+          "unit": "Unit"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Add a meter reading",
+        "description": "Enter the absolute reading and the exact date and time. An existing reading with the same timestamp is corrected.",
+        "data": {
+          "value": "Meter reading",
+          "timestamp": "Date and time"
+        }
+      }
+    },
+    "error": {
+      "invalid_timestamp": "Enter a valid date and time.",
+      "invalid_value": "The reading must be a finite, non-negative number.",
+      "non_monotonic": "This reading would make the meter decrease. Correct the adjacent reading first."
+    }
+  },
+  "exceptions": {
+    "entry_not_found": {
+      "message": "The selected Manual Energy Metering entry does not exist."
+    },
+    "entry_not_loaded": {
+      "message": "The selected Manual Energy Metering entry is not loaded."
+    },
+    "invalid_timestamp": {
+      "message": "Enter a valid date and time."
+    },
+    "invalid_value": {
+      "message": "The reading must be a finite, non-negative number."
+    },
+    "non_monotonic": {
+      "message": "This reading would make the meter decrease. Correct the adjacent reading first."
+    }
+  },
+  "selector": {
+    "meter_type": {
+      "options": {
+        "electricity": "Electricity",
+        "gas": "Gas",
+        "water": "Water"
+      }
+    }
+  }
+}

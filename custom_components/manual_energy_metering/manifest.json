@@ -1,0 +1,11 @@
+{
+  "domain": "manual_energy_metering",
+  "name": "Manual Energy Metering",
+  "codeowners": [],
+  "config_flow": true,
+  "dependencies": ["recorder"],
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "1.0.0"
+}

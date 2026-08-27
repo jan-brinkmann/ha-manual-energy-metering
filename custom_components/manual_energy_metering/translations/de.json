@@ -1,0 +1,64 @@
+{
+  "title": "Manuelle Energiemessung",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Manuellen Zähler anlegen",
+        "description": "Erstellt eine eigene Entität für diesen Verbrauchszähler.",
+        "data": {
+          "name": "Name",
+          "meter_type": "Zählertyp"
+        }
+      },
+      "unit": {
+        "title": "Einheit des Stromzählers auswählen",
+        "data": {
+          "unit": "Einheit"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Zählerstand hinzufügen",
+        "description": "Gib den absoluten Zählerstand mit genauem Datum und Uhrzeit ein. Ein vorhandener Wert mit demselben Zeitstempel wird korrigiert.",
+        "data": {
+          "value": "Zählerstand",
+          "timestamp": "Datum und Uhrzeit"
+        }
+      }
+    },
+    "error": {
+      "invalid_timestamp": "Gib ein gültiges Datum mit Uhrzeit ein.",
+      "invalid_value": "Der Zählerstand muss eine endliche, nicht negative Zahl sein.",
+      "non_monotonic": "Dieser Wert würde den Zähler rückwärts laufen lassen. Korrigiere zuerst den angrenzenden Zählerstand."
+    }
+  },
+  "exceptions": {
+    "entry_not_found": {
+      "message": "Der ausgewählte manuelle Zähler existiert nicht."
+    },
+    "entry_not_loaded": {
+      "message": "Der ausgewählte manuelle Zähler ist nicht geladen."
+    },
+    "invalid_timestamp": {
+      "message": "Gib ein gültiges Datum mit Uhrzeit ein."
+    },
+    "invalid_value": {
+      "message": "Der Zählerstand muss eine endliche, nicht negative Zahl sein."
+    },
+    "non_monotonic": {
+      "message": "Dieser Wert würde den Zähler rückwärts laufen lassen. Korrigiere zuerst den angrenzenden Zählerstand."
+    }
+  },
+  "selector": {
+    "meter_type": {
+      "options": {
+        "electricity": "Strom",
+        "gas": "Gas",
+        "water": "Wasser"
+      }
+    }
+  }
+}

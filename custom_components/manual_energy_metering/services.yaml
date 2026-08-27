@@ -1,0 +1,26 @@
+add_reading:
+  name: Add meter reading
+  description: Add or correct a timestamped reading for a configured manual meter.
+  fields:
+    config_entry_id:
+      name: Meter
+      description: The Manual Energy Metering config entry that receives the reading.
+      required: true
+      selector:
+        config_entry:
+          integration: manual_energy_metering
+    value:
+      name: Meter reading
+      description: The absolute meter reading in the unit configured for this meter.
+      required: true
+      selector:
+        number:
+          min: 0
+          step: any
+          mode: box
+    timestamp:
+      name: Date and time
+      description: When the meter showed this reading.
+      required: true
+      selector:
+        datetime:

@@ -21,18 +21,33 @@
   "options": {
     "step": {
       "init": {
-        "title": "Zählerstand hinzufügen",
-        "description": "Gib den absoluten Zählerstand mit genauem Datum und Uhrzeit ein. Ein vorhandener Wert mit demselben Zeitstempel wird korrigiert.",
+        "title": "Zählerstände verwalten",
+        "menu_options": {
+          "add_reading": "Zählerstand hinzufügen oder korrigieren",
+          "delete_reading": "Zählerstand löschen"
+        }
+      },
+      "add_reading": {
+        "title": "Zählerstand hinzufügen oder korrigieren",
+        "description": "Gib den absoluten Zählerstand mit genauem Datum und Uhrzeit ein. Ein vorhandener Wert mit demselben Zeitstempel wird korrigiert. Neue Werte können zwischen vorhandenen Ablesungen eingefügt werden; die Interpolation wird anschließend neu berechnet.",
         "data": {
           "value": "Zählerstand",
           "timestamp": "Datum und Uhrzeit"
+        }
+      },
+      "delete_reading": {
+        "title": "Zählerstand löschen",
+        "description": "Wähle den zu löschenden Zählerstand aus. Die interpolierten Statistiken werden aus den verbleibenden Zählerständen neu aufgebaut.",
+        "data": {
+          "timestamp": "Zählerstand"
         }
       }
     },
     "error": {
       "invalid_timestamp": "Gib ein gültiges Datum mit Uhrzeit ein.",
       "invalid_value": "Der Zählerstand muss eine endliche, nicht negative Zahl sein.",
-      "non_monotonic": "Dieser Wert würde den Zähler rückwärts laufen lassen. Korrigiere zuerst den angrenzenden Zählerstand."
+      "non_monotonic": "Dieser Wert würde den Zähler rückwärts laufen lassen. Korrigiere zuerst den angrenzenden Zählerstand.",
+      "reading_not_found": "Der ausgewählte Zählerstand existiert nicht mehr."
     }
   },
   "exceptions": {
@@ -50,6 +65,9 @@
     },
     "non_monotonic": {
       "message": "Dieser Wert würde den Zähler rückwärts laufen lassen. Korrigiere zuerst den angrenzenden Zählerstand."
+    },
+    "reading_not_found": {
+      "message": "Der ausgewählte Zählerstand existiert nicht mehr."
     }
   },
   "selector": {

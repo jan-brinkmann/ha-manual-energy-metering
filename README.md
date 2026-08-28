@@ -1,4 +1,4 @@
-*Bitte vergebe einen :star: falls du diese Integration nützlich findest! :blush:*
+*Bitte vergebe einen* :star: *falls du diese Integration nützlich findest!* :blush:
 
 # Manual Energy Metering
 
@@ -93,17 +93,33 @@ Integrationsordners im Home-Assistant-Speicher und bleiben beim Ersetzen des
 Integrationsordners erhalten. Erstelle unabhängig davon vor Home-Assistant-Updates
 regelmäßig ein Backup deiner Installation.
 
-## Zählerstände erfassen
+## Zählerstände verwalten
 
 Öffne **Einstellungen > Geräte & Dienste**, suche im Reiter **Integrationen**
-die Kachel **Manuelle Energiemessung**. Klicke beim gewünschten Zähler auf das
-Zahnradsymbol. Gib den absoluten Zählerstand und den Zeitpunkt der
-Ablesung ein.
+die Kachel **Manuelle Energiemessung** und klicke beim gewünschten Zähler auf das
+Zahnradsymbol. Wähle anschließend eine der angebotenen Funktionen:
 
-Alternativ steht unter **Entwicklerwerkzeuge > Aktionen** die Aktion
-`manual_energy_metering.add_reading` zur Verfügung. Sie eignet sich auch für
-Automatisierungen. Ein Wert mit einem bereits vorhandenen Zeitstempel korrigiert
-diesen Wert. Die zeitlich sortierten Zählerstände dürfen nicht sinken.
+- **Zählerstand hinzufügen oder korrigieren:** Gib den absoluten Zählerstand und
+  den Zeitpunkt der Ablesung ein. Messwerte können vor, zwischen oder nach den
+  vorhandenen Ablesungen eingefügt werden. Ein Wert mit einem bereits vorhandenen
+  Zeitstempel korrigiert diesen Wert. Die zeitlich sortierten Zählerstände dürfen
+  nicht sinken.
+- **Zählerstand löschen:** Wähle einen vorhandenen Messwert anhand von Datum,
+  Uhrzeit und Wert aus. Die Auswahl steht zur Verfügung, sobald mindestens ein
+  Messwert existiert.
+
+Nach jedem Hinzufügen, Korrigieren oder Löschen entfernt die Integration die zuvor
+interpolierte Langzeitstatistik dieses Zählers vollständig und baut sie aus den
+aktuell gespeicherten Messwerten neu auf. Dadurch wird beim Einfügen eines
+Zwischenwerts das alte Intervall in zwei neue Intervalle aufgeteilt. Beim Löschen
+eines Zwischenwerts werden die benachbarten Ablesungen wieder direkt miteinander
+interpoliert.
+
+Alternativ stehen unter **Entwicklerwerkzeuge > Aktionen** die Aktionen
+`manual_energy_metering.add_reading` und
+`manual_energy_metering.delete_reading` zur Verfügung. Sie eignen sich auch für
+Automatisierungen. Beim Löschen muss der Zeitstempel exakt dem gespeicherten
+Ablesezeitpunkt entsprechen.
 
 ## Zeitangaben und Entitätsverlauf
 
@@ -132,7 +148,7 @@ Langzeitstatistik `manual_energy_metering:*` verwendet.
 
 ## Energy Dashboard
 
-Nach mindestens einer Ablesung erscheint für den Zähler eine Statistik mit dem
+Nach mindestens zwei Ablesungen erscheint für den Zähler eine Statistik mit dem
 Namen des Zählers. Ihre ID hat die Form
 `manual_energy_metering:<interne_zaehler_id>`. Die konkrete ID steht außerdem im
 Attribut `statistic_id` der Sensorentität.
@@ -150,12 +166,13 @@ Ablesung wird kein Verbrauch extrapoliert.
 
 ## Beispiele
 
-Bei einem Wasserzähler mit `1 L` am 1. Januar um 00:00 Uhr und `25 L` am
-2. Januar um 00:00 Uhr entstehen 24 Stundenwerte zu jeweils `1 L`.
+Bei einem Wasserzähler mit `1 L` am 1. Januar um 00:00 Uhr und
+`25 L` am 2. Januar um 00:00 Uhr entstehen 24 Stundenwerte zu jeweils `1 L`.
 
-Bei einem Stromzähler mit `1000 kWh` am 1. Januar um 00:00 Uhr und `9760 kWh` am
-1. Januar des Folgejahres, ergibt sich am täglicher Verbrauch von `24 kWh = (9760 kWh - 1000 kWh) / 365 Tage`
-bzw. ein ständlicher Verbrauch von `1 kWh`.
+Bei einem Stromzähler mit `1000 kWh` am 1. Januar um 00:00 Uhr und `9760 kWh`
+am 1. Januar des Folgejahres ergibt sich ein täglicher Verbrauch von
+`24 kWh = (9760 kWh - 1000 kWh) / 365 Tage` beziehungsweise ein stündlicher
+Verbrauch von `1 kWh`.
 
 ## Lizenz
 

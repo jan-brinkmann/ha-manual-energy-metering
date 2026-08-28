@@ -55,6 +55,25 @@ def validate_readings(readings: Iterable[Reading]) -> list[Reading]:
     return ordered
 
 
+def upsert_reading(readings: Iterable[Reading], reading: Reading) -> list[Reading]:
+    """Insert or replace one reading and validate the resulting timeline."""
+    by_timestamp = {item.timestamp: item for item in readings}
+    by_timestamp[reading.timestamp] = reading
+    return validate_readings(by_timestamp.values())
+
+
+def remove_reading(
+    readings: Iterable[Reading], timestamp: datetime
+) -> tuple[list[Reading], Reading]:
+    """Remove and return the reading at an exact timestamp."""
+    point = _as_utc(timestamp)
+    ordered = validate_readings(readings)
+    for reading in ordered:
+        if reading.timestamp == point:
+            return [item for item in ordered if item.timestamp != point], reading
+    raise KeyError(point)
+
+
 def interpolate_value(readings: Iterable[Reading], at: datetime) -> float | None:
     """Interpolate the meter value at a point in time."""
     ordered = validate_readings(readings)

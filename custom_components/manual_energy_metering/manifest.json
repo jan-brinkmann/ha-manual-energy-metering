@@ -4,10 +4,10 @@
   "codeowners": ["@jan-brinkmann"],
   "config_flow": true,
   "dependencies": ["recorder"],
+  "documentation": "https://github.com/jan-brinkmann/ha-manual-energy-metering",
   "integration_type": "device",
   "iot_class": "local_push",
+  "issue_tracker": "https://github.com/jan-brinkmann/ha-manual-energy-metering/issues",
   "requirements": [],
-  "version": "1.0.0",
-  "documentation": "https://github.com/jan-brinkmann/ha-manual-energy-metering",
-  "issue_tracker": "https://github.com/jan-brinkmann/ha-manual-energy-metering/issues"
+  "version": "1.0.0"
 }

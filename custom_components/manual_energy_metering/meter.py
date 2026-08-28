@@ -14,10 +14,11 @@ from homeassistant.components.recorder.models import (
     StatisticMetaData,
 )
 from homeassistant.components.recorder.statistics import async_add_external_statistics
+from homeassistant.components.recorder.util import get_instance
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.util import dt as dt_util
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_METER_ID,
@@ -28,7 +29,14 @@ from .const import (
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
 )
-from .interpolation import Reading, hourly_consumption, interpolate_value, validate_readings
+from .interpolation import (
+    Reading,
+    hourly_consumption,
+    interpolate_value,
+    remove_reading,
+    upsert_reading,
+    validate_readings,
+)
 
 
 class ReadingError(ValueError):
@@ -59,6 +67,7 @@ class ManualEnergyMetering:
         self._readings: list[Reading] = []
         self._listeners: set[Callable[[], None]] = set()
         self._lock = asyncio.Lock()
+        self._statistics_revision = 0
 
     @property
     def statistic_id(self) -> str:
@@ -118,42 +127,78 @@ class ManualEnergyMetering:
         )
 
         async with self._lock:
-            by_timestamp = {
-                item.timestamp: item for item in self._readings
-            }
-            by_timestamp[reading.timestamp] = reading
             try:
-                updated = validate_readings(by_timestamp.values())
+                updated = upsert_reading(self._readings, reading)
             except ValueError as err:
                 raise ReadingError("non_monotonic", str(err)) from err
-
-            old_readings = self._readings
-            self._readings = updated
-            try:
-                await self._store.async_save(
-                    {
-                        "readings": [
-                            {
-                                "timestamp": item.timestamp.isoformat(),
-                                "value": item.value,
-                            }
-                            for item in updated
-                        ]
-                    }
-                )
-            except Exception:
-                self._readings = old_readings
-                raise
-
-            self.async_import_statistics()
+            await self._async_save_readings(updated)
 
         for listener in tuple(self._listeners):
             listener()
         return reading
 
+    async def async_delete_reading(self, timestamp: Any) -> Reading:
+        """Delete one reading at an exact timestamp."""
+        normalized_timestamp = self._normalize_timestamp(timestamp)
+
+        async with self._lock:
+            try:
+                updated, deleted = remove_reading(
+                    self._readings, normalized_timestamp
+                )
+            except KeyError as err:
+                raise ReadingError(
+                    "reading_not_found", "No reading exists at this timestamp"
+                ) from err
+            await self._async_save_readings(updated)
+
+        for listener in tuple(self._listeners):
+            listener()
+        return deleted
+
+    async def _async_save_readings(self, updated: list[Reading]) -> None:
+        """Persist a validated reading list and rebuild its statistics."""
+        old_readings = self._readings
+        self._readings = updated
+        try:
+            await self._store.async_save(
+                {
+                    "readings": [
+                        {
+                            "timestamp": item.timestamp.isoformat(),
+                            "value": item.value,
+                        }
+                        for item in updated
+                    ]
+                }
+            )
+        except Exception:
+            self._readings = old_readings
+            raise
+
+        self.async_rebuild_statistics()
+
     @callback
-    def async_import_statistics(self) -> None:
-        """Import linearly interpolated hourly long-term statistics."""
+    def async_rebuild_statistics(self) -> None:
+        """Clear and rebuild all hourly statistics from canonical readings."""
+        self._statistics_revision += 1
+        revision = self._statistics_revision
+
+        def statistics_cleared() -> None:
+            self.hass.loop.call_soon_threadsafe(
+                self._async_import_statistics, revision
+            )
+
+        get_instance(self.hass).async_clear_statistics(
+            [self.statistic_id], on_done=statistics_cleared
+        )
+
+    @callback
+    def _async_import_statistics(self, revision: int) -> None:
+        """Import the latest revision after its previous rows were cleared."""
+        if revision != self._statistics_revision:
+            return
+
         unit_class = "volume" if self.meter_type == METER_TYPE_WATER else "energy"
         metadata = StatisticMetaData(
             has_sum=True,
@@ -172,7 +217,8 @@ class ManualEnergyMetering:
             )
             for bucket in hourly_consumption(self._readings)
         ]
-        async_add_external_statistics(self.hass, metadata, statistics)
+        if statistics:
+            async_add_external_statistics(self.hass, metadata, statistics)
 
     def _normalize_timestamp(self, value: Any) -> datetime:
         """Parse a timestamp and interpret naive values in the HA timezone."""

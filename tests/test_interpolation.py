@@ -13,7 +13,13 @@ MODULE_DIR = (
 )
 sys.path.insert(0, str(MODULE_DIR))
 
-from interpolation import Reading, hourly_consumption, interpolate_value  # noqa: E402
+from interpolation import (  # noqa: E402
+    Reading,
+    hourly_consumption,
+    interpolate_value,
+    remove_reading,
+    upsert_reading,
+)
 
 
 class HourlyConsumptionTests(unittest.TestCase):
@@ -87,6 +93,37 @@ class HourlyConsumptionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must not decrease"):
             hourly_consumption(readings)
 
+    def test_removing_middle_reading_replaces_interpolation(self) -> None:
+        readings = [
+            Reading(datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), 0),
+            Reading(datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc), 60),
+            Reading(datetime(2026, 1, 1, 6, 0, tzinfo=timezone.utc), 90),
+        ]
+
+        updated, deleted = remove_reading(
+            readings, datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc)
+        )
+        result = hourly_consumption(updated)
+
+        self.assertEqual(deleted, readings[1])
+        self.assertEqual([item.consumption for item in result], [15] * 6)
+
+    def test_inserting_middle_reading_splits_interpolation(self) -> None:
+        readings = [
+            Reading(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc), 0),
+            Reading(datetime(2026, 1, 1, 18, 0, tzinfo=timezone.utc), 60),
+        ]
+
+        updated = upsert_reading(
+            readings,
+            Reading(datetime(2026, 1, 1, 15, 0, tzinfo=timezone.utc), 15),
+        )
+        result = hourly_consumption(updated)
+
+        self.assertEqual(
+            [item.consumption for item in result], [5, 5, 5, 15, 15, 15]
+        )
+
 
 class IntegrationIdentityTests(unittest.TestCase):
     """Verify the canonical domain and its derived identifiers."""
@@ -107,11 +144,15 @@ class IntegrationIdentityTests(unittest.TestCase):
 
     def test_visible_integration_names(self) -> None:
         manifest = json.loads((MODULE_DIR / "manifest.json").read_text())
+        hacs = json.loads((MODULE_DIR.parents[1] / "hacs.json").read_text())
         german = json.loads(
             (MODULE_DIR / "translations" / "de.json").read_text()
         )
 
         self.assertEqual(manifest["name"], "Manual Energy Metering")
+        self.assertEqual(manifest["codeowners"], ["@jan-brinkmann"])
+        self.assertEqual(hacs["name"], "Manual Energy Metering")
+        self.assertFalse((MODULE_DIR / "hacs.json").exists())
         self.assertEqual(german["title"], "Manuelle Energiemessung")
 
 if __name__ == "__main__":

@@ -22,6 +22,7 @@ ATTR_LAST_READING_TIMESTAMP = "last_reading_timestamp"
 ATTR_STATISTIC_ID = "statistic_id"
 
 SERVICE_ADD_READING = "add_reading"
+SERVICE_DELETE_READING = "delete_reading"
 MAX_RECENT_READINGS = 50
 
 METER_TYPE_ELECTRICITY = "electricity"

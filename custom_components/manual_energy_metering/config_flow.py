@@ -141,6 +141,13 @@ class ManualEnergyMeteringOptionsFlow(OptionsFlow):
             else:
                 return self.async_create_entry(title="", data={})
 
+        default_timestamp = (
+            user_input[ATTR_TIMESTAMP]
+            if user_input is not None and ATTR_TIMESTAMP in user_input
+            else dt_util.now().replace(
+                second=0, microsecond=0
+            ).strftime("%Y-%m-%d %H:%M:%S")
+        )
         return self.async_show_form(
             step_id="add_reading",
             data_schema=vol.Schema(
@@ -152,7 +159,9 @@ class ManualEnergyMeteringOptionsFlow(OptionsFlow):
                             step="any",
                         )
                     ),
-                    vol.Required(ATTR_TIMESTAMP): DateTimeSelector(),
+                    vol.Required(
+                        ATTR_TIMESTAMP, default=default_timestamp
+                    ): DateTimeSelector(),
                 }
             ),
             errors=errors,

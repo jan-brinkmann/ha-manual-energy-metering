@@ -155,5 +155,15 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertFalse((MODULE_DIR / "hacs.json").exists())
         self.assertEqual(german["title"], "Manuelle Energiemessung")
 
+    def test_reading_form_has_real_timestamp_default(self) -> None:
+        config_flow = (MODULE_DIR / "config_flow.py").read_text()
+
+        self.assertIn(
+            "ATTR_TIMESTAMP, default=default_timestamp", config_flow
+        )
+        self.assertIn("second=0, microsecond=0", config_flow)
+        self.assertIn('strftime("%Y-%m-%d %H:%M:%S")', config_flow)
+
+
 if __name__ == "__main__":
     unittest.main()

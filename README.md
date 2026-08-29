@@ -2,7 +2,7 @@
 
 # Manual Energy Metering
 
-`Manual Energy Metering` ist eine lokale Custom Integration für Home Assistant. Sie
+`Manual Energy Metering` ist eine Custom Integration für Home Assistant. Sie
 richtet sich an Home-Assistant-Nutzer, die ihre Strom-, Gas- und/oder Wasserzähler
 aus unterschiedlichen Gründen nicht mit einem Lesegerät ausstatten können, das die
 Zählerstände automatisch für Home Assistant verfügbar macht. Die Integration
@@ -10,12 +10,18 @@ verwaltet beliebig viele manuell abgelesene Strom-, Gas- und Wasserzähler und
 verteilt den Verbrauch zwischen zwei Ablesungen linear auf die betroffenen
 Stunden.
 
+Mit der Integration lassen sich außerdem Lücken in bereits vorhandenen
+Aufzeichnungen schließen. Ebenso können historische Zählerstände nachgetragen
+werden, die über Jahre oder Jahrzehnte handschriftlich oder in Tabellen
+dokumentiert wurden. Aus den eingepflegten Ablesungen erzeugt die Integration
+eine durchgängig interpolierte Langzeitstatistik für die jeweils erfassten Zeiträume.
+
 In einer deutschsprachigen Home-Assistant-Oberfläche wird die Integration als
 **Manuelle Energiemessung** angezeigt.
 
 ## Unterstützte Zähler
 
-| Zählertyp | Einheit | Anwendungsbeispiel
+| Zählertyp | Einheit | Anwendungsbeispiele
 | --- | --- | --- |
 | Strom | `Wh` oder `kWh` | Hauptstromzähler für Bezug und/oder Einspeisung, PV-Erzeugung |
 | Gas | `kWh` | Gasheizung, Fernwärmestation |

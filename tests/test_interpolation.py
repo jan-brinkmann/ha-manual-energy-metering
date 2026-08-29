@@ -15,6 +15,7 @@ sys.path.insert(0, str(MODULE_DIR))
 
 from interpolation import (  # noqa: E402
     Reading,
+    format_reading_summary,
     hourly_consumption,
     interpolate_value,
     remove_reading,
@@ -122,6 +123,26 @@ class HourlyConsumptionTests(unittest.TestCase):
 
         self.assertEqual(
             [item.consumption for item in result], [5, 5, 5, 15, 15, 15]
+        )
+
+
+class FormattingTests(unittest.TestCase):
+    """Verify localized reading summaries used by the options dialog."""
+
+    def test_german_reading_summary(self) -> None:
+        timestamp = datetime(2026, 8, 29, 14, 3, 5, tzinfo=timezone.utc)
+
+        result = format_reading_summary(1234567.89, "kWh", timestamp, "de")
+
+        self.assertEqual(result, "1.234.567,89 kWh - 29.08.2026, 14:03:05")
+
+    def test_english_reading_summary(self) -> None:
+        timestamp = datetime(2026, 8, 29, 14, 3, 5, tzinfo=timezone.utc)
+
+        result = format_reading_summary(1234567.89, "kWh", timestamp, "en")
+
+        self.assertEqual(
+            result, "1,234,567.89 kWh - 08/29/2026, 02:03:05 PM"
         )
 
 

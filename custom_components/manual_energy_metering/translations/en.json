@@ -29,7 +29,7 @@
       },
       "add_reading": {
         "title": "Add or correct a meter reading",
-        "description": "Enter the absolute reading and the exact date and time. An existing reading with the same timestamp is corrected. New readings may be inserted between existing readings; the interpolation is then recalculated.",
+        "description": "Enter the absolute reading and the exact date and time. An existing reading with the same timestamp is corrected. New readings may be inserted between existing readings; the interpolation is then recalculated.\n\n**Last meter reading:** {last_reading}",
         "data": {
           "value": "Meter reading",
           "timestamp": "Date and time"

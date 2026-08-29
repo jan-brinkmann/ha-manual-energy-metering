@@ -29,7 +29,7 @@
       },
       "add_reading": {
         "title": "Zählerstand hinzufügen oder korrigieren",
-        "description": "Gib den absoluten Zählerstand mit genauem Datum und Uhrzeit ein. Ein vorhandener Wert mit demselben Zeitstempel wird korrigiert. Neue Werte können zwischen vorhandenen Ablesungen eingefügt werden; die Interpolation wird anschließend neu berechnet.",
+        "description": "Gib den absoluten Zählerstand mit genauem Datum und Uhrzeit ein. Ein vorhandener Wert mit demselben Zeitstempel wird korrigiert. Neue Werte können zwischen vorhandenen Ablesungen eingefügt werden; die Interpolation wird anschließend neu berechnet.\n\n**Letzter Zählerstand:** {last_reading}",
         "data": {
           "value": "Zählerstand",
           "timestamp": "Datum und Uhrzeit"

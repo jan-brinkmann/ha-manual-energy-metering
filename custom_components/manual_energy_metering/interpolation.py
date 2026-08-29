@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 import math
 from typing import Iterable
 
@@ -72,6 +73,47 @@ def remove_reading(
         if reading.timestamp == point:
             return [item for item in ordered if item.timestamp != point], reading
     raise KeyError(point)
+
+
+def _format_number(
+    value: float, *, thousands_separator: str, decimal_separator: str
+) -> str:
+    """Format a reading without losing meaningful decimal places."""
+    formatted = format(Decimal(str(value)), ",f")
+    if "." in formatted:
+        formatted = formatted.rstrip("0").rstrip(".")
+
+    integer, separator, fraction = formatted.partition(".")
+    integer = integer.replace(",", thousands_separator)
+    if not separator:
+        return integer
+    return f"{integer}{decimal_separator}{fraction}"
+
+
+def format_reading_summary(
+    value: float, unit: str, timestamp: datetime, language: str
+) -> str:
+    """Format one reading for the German or English flow description."""
+    if language == "de":
+        number = _format_number(
+            value, thousands_separator=".", decimal_separator=","
+        )
+        date_time = (
+            f"{timestamp.day:02d}.{timestamp.month:02d}.{timestamp.year:04d}, "
+            f"{timestamp.hour:02d}:{timestamp.minute:02d}:{timestamp.second:02d}"
+        )
+    else:
+        number = _format_number(
+            value, thousands_separator=",", decimal_separator="."
+        )
+        hour = timestamp.hour % 12 or 12
+        period = "AM" if timestamp.hour < 12 else "PM"
+        date_time = (
+            f"{timestamp.month:02d}/{timestamp.day:02d}/{timestamp.year:04d}, "
+            f"{hour:02d}:{timestamp.minute:02d}:{timestamp.second:02d} {period}"
+        )
+
+    return f"{number} {unit} - {date_time}"
 
 
 def interpolate_value(readings: Iterable[Reading], at: datetime) -> float | None:

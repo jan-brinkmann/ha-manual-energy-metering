@@ -35,6 +35,7 @@ from .const import (
     METER_TYPES,
     UNIT_KWH,
 )
+from .interpolation import format_reading_summary
 from .meter import ManualEnergyMetering, ReadingError
 
 
@@ -129,9 +130,9 @@ class ManualEnergyMeteringOptionsFlow(OptionsFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         """Add or correct a timestamped reading."""
+        meter: ManualEnergyMetering = self.config_entry.runtime_data
         errors: dict[str, str] = {}
         if user_input is not None:
-            meter: ManualEnergyMetering = self.config_entry.runtime_data
             try:
                 await meter.async_add_reading(
                     user_input[ATTR_VALUE], user_input[ATTR_TIMESTAMP]
@@ -148,6 +149,25 @@ class ManualEnergyMeteringOptionsFlow(OptionsFlow):
                 second=0, microsecond=0
             ).strftime("%Y-%m-%d %H:%M:%S")
         )
+        language = "de" if self.hass.config.language.startswith("de") else "en"
+        if latest_reading := meter.latest_reading:
+            local_timestamp = latest_reading.timestamp.astimezone(
+                dt_util.get_default_time_zone()
+            )
+            description_placeholders = {
+                "last_reading": format_reading_summary(
+                    latest_reading.value, meter.unit, local_timestamp, language
+                ),
+            }
+        else:
+            description_placeholders = {
+                "last_reading": (
+                    "Noch keiner erfasst."
+                    if language == "de"
+                    else "None recorded."
+                )
+            }
+
         return self.async_show_form(
             step_id="add_reading",
             data_schema=vol.Schema(
@@ -165,6 +185,7 @@ class ManualEnergyMeteringOptionsFlow(OptionsFlow):
                 }
             ),
             errors=errors,
+            description_placeholders=description_placeholders,
         )
 
     async def async_step_delete_reading(

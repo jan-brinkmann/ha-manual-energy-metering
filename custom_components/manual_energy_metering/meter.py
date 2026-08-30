@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 import math
 from typing import Any
 
+from homeassistant.components.recorder.db_schema import Statistics
 from homeassistant.components.recorder.models import (
     StatisticData,
     StatisticMeanType,
     StatisticMetaData,
 )
 from homeassistant.components.recorder.statistics import async_add_external_statistics
-from homeassistant.components.recorder.util import get_instance
+from homeassistant.components.recorder.tasks import RecorderTask
+from homeassistant.components.recorder.util import get_instance, session_scope
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
@@ -31,14 +34,44 @@ from .const import (
 )
 from .interpolation import (
     DuplicateTimestampError,
+    HourlyStatisticsUpdate,
     Reading,
-    hourly_consumption,
+    changed_hourly_statistics,
     interpolate_value,
     remove_reading,
     replace_reading,
     upsert_reading,
     validate_readings,
 )
+
+_DELETE_BATCH_SIZE = 500
+
+
+# Home Assistant exposes upserts, but no public API for deleting selected
+# external-statistic hours. Queue this targeted delete with recorder imports.
+@dataclass(slots=True)
+class _DeleteStatisticsRowsTask(RecorderTask):
+    """Delete selected external-statistic hours in the recorder thread."""
+
+    statistic_id: str
+    starts: tuple[datetime, ...]
+
+    def run(self, instance: Any) -> None:
+        """Delete only rows with the supplied exact hour timestamps."""
+        with session_scope(session=instance.get_session()) as session:
+            metadata = instance.statistics_meta_manager.get_many(
+                session, statistic_ids={self.statistic_id}
+            )
+            if self.statistic_id not in metadata:
+                return
+            metadata_id = metadata[self.statistic_id][0]
+            timestamps = [start.timestamp() for start in self.starts]
+            for offset in range(0, len(timestamps), _DELETE_BATCH_SIZE):
+                batch = timestamps[offset : offset + _DELETE_BATCH_SIZE]
+                session.query(Statistics).filter(
+                    Statistics.metadata_id == metadata_id,
+                    Statistics.start_ts.in_(batch),
+                ).delete(synchronize_session=False)
 
 
 class ReadingError(ValueError):
@@ -69,7 +102,7 @@ class ManualEnergyMetering:
         self._readings: list[Reading] = []
         self._listeners: set[Callable[[], None]] = set()
         self._lock = asyncio.Lock()
-        self._statistics_revision = 0
+        self._statistics_baseline: float | None = None
 
     @property
     def statistic_id(self) -> str:
@@ -120,6 +153,17 @@ class ManualEnergyMetering:
             # Do not make Home Assistant fail to start because of a manually edited
             # storage file. New writes will replace the invalid data.
             self._readings = []
+
+        stored_baseline = stored.get("statistics_baseline")
+        try:
+            baseline = (
+                float(stored_baseline) if stored_baseline is not None else None
+            )
+        except (TypeError, ValueError):
+            baseline = None
+        if baseline is None or not math.isfinite(baseline):
+            baseline = self._readings[0].value if self._readings else None
+        self._statistics_baseline = baseline
 
     async def async_add_reading(self, value: Any, timestamp: Any) -> Reading:
         """Validate, persist, and publish a reading."""
@@ -191,9 +235,23 @@ class ManualEnergyMetering:
         return deleted
 
     async def _async_save_readings(self, updated: list[Reading]) -> None:
-        """Persist a validated reading list and rebuild its statistics."""
+        """Persist readings and enqueue their minimal statistics update."""
         old_readings = self._readings
+        old_baseline = self._statistics_baseline
+        baseline = old_baseline
+        if len(old_readings) < 2:
+            baseline = updated[0].value if updated else None
+        elif baseline is None:
+            baseline = old_readings[0].value
+        statistics_update = changed_hourly_statistics(
+            old_readings, updated, baseline
+        )
+
+        stored_baseline = baseline
+        if len(updated) < 2:
+            stored_baseline = updated[0].value if updated else None
         self._readings = updated
+        self._statistics_baseline = stored_baseline
         try:
             await self._store.async_save(
                 {
@@ -203,38 +261,48 @@ class ManualEnergyMetering:
                             "value": item.value,
                         }
                         for item in updated
-                    ]
+                    ],
+                    "statistics_baseline": stored_baseline,
                 }
             )
         except Exception:
             self._readings = old_readings
+            self._statistics_baseline = old_baseline
             raise
 
-        self.async_rebuild_statistics()
+        self._async_apply_statistics_update(statistics_update)
 
     @callback
-    def async_rebuild_statistics(self) -> None:
-        """Clear and rebuild all hourly statistics from canonical readings."""
-        self._statistics_revision += 1
-        revision = self._statistics_revision
-
-        def statistics_cleared() -> None:
-            self.hass.loop.call_soon_threadsafe(
-                self._async_import_statistics, revision
+    def _async_apply_statistics_update(
+        self, update: HourlyStatisticsUpdate
+    ) -> None:
+        """Delete and upsert only the statistic rows in an update plan."""
+        if update.delete_starts:
+            get_instance(self.hass).queue_task(
+                _DeleteStatisticsRowsTask(
+                    statistic_id=self.statistic_id,
+                    starts=update.delete_starts,
+                )
             )
-
-        get_instance(self.hass).async_clear_statistics(
-            [self.statistic_id], on_done=statistics_cleared
-        )
-
-    @callback
-    def _async_import_statistics(self, revision: int) -> None:
-        """Import the latest revision after its previous rows were cleared."""
-        if revision != self._statistics_revision:
+        if not update.upsert:
             return
 
+        statistics = [
+            StatisticData(
+                start=bucket.start,
+                state=bucket.consumption,
+                sum=bucket.cumulative,
+            )
+            for bucket in update.upsert
+        ]
+        async_add_external_statistics(
+            self.hass, self._statistics_metadata(), statistics
+        )
+
+    def _statistics_metadata(self) -> StatisticMetaData:
+        """Return metadata for this meter's external statistic."""
         unit_class = "volume" if self.meter_type == METER_TYPE_WATER else "energy"
-        metadata = StatisticMetaData(
+        return StatisticMetaData(
             has_sum=True,
             mean_type=StatisticMeanType.NONE,
             name=self.name,
@@ -243,16 +311,6 @@ class ManualEnergyMetering:
             unit_class=unit_class,
             unit_of_measurement=self.unit,
         )
-        statistics = [
-            StatisticData(
-                start=bucket.start,
-                state=bucket.consumption,
-                sum=bucket.cumulative,
-            )
-            for bucket in hourly_consumption(self._readings)
-        ]
-        if statistics:
-            async_add_external_statistics(self.hass, metadata, statistics)
 
     def _normalize_timestamp(self, value: Any) -> datetime:
         """Parse a timestamp and interpret naive values in the HA timezone."""

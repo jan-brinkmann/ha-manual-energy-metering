@@ -27,7 +27,7 @@ add_reading:
 
 delete_reading:
   name: Delete meter reading
-  description: Delete a reading and rebuild all interpolated statistics.
+  description: Delete a reading and update only affected interpolated statistics.
   fields:
     config_entry_id:
       name: Meter

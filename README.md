@@ -1,4 +1,6 @@
-*Bitte vergebe einen* :star: *falls du diese Integration nützlich findest!* :blush:
+[Deutsche Dokumentation](README.de.md)
+
+*Please leave a* :star: *if you find this integration useful!* :blush:
 
 # Manual Energy Metering
 
@@ -10,191 +12,183 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jan-brinkmann/ha-manual-energy-metering)](https://github.com/jan-brinkmann/ha-manual-energy-metering/commits/main)
 [![Validate](https://github.com/jan-brinkmann/ha-manual-energy-metering/actions/workflows/validate.yml/badge.svg)](https://github.com/jan-brinkmann/ha-manual-energy-metering/actions/workflows/validate.yml)
 
-`Manual Energy Metering` ist eine Custom Integration für Home Assistant. Sie
-richtet sich an Home-Assistant-Nutzer, die ihre Strom-, Gas- und/oder Wasserzähler
-aus unterschiedlichen Gründen nicht mit einem Lesegerät ausstatten können, das die
-Zählerstände automatisch für Home Assistant verfügbar macht. Die Integration
-verwaltet beliebig viele manuell abgelesene Strom-, Gas- und Wasserzähler und
-verteilt den Verbrauch zwischen zwei Ablesungen linear auf die betroffenen
-Stunden.
+`Manual Energy Metering` is a custom integration for Home Assistant. It is
+intended for Home Assistant users who, for various reasons, cannot equip their
+electricity, gas, and/or water meters with a reading device that automatically
+makes meter readings available to Home Assistant. The integration manages any
+number of manually read electricity, gas, and water meters and distributes the
+consumption between two readings linearly across the affected hours. The
+resulting interpolated readings can be added to Home Assistant's Energy
+Dashboard.
 
-Mit der Integration lassen sich außerdem Lücken in bereits vorhandenen
-Aufzeichnungen schließen. Ebenso können historische Zählerstände nachgetragen
-werden, die über Jahre oder Jahrzehnte handschriftlich oder in Tabellen
-dokumentiert wurden. Aus den eingepflegten Ablesungen erzeugt die Integration
-eine durchgängig interpolierte Langzeitstatistik für die jeweils erfassten Zeiträume.
+The integration can also close gaps in existing records. Historical meter
+readings that have been documented by hand or in spreadsheets for years or even
+decades can be entered as well. From these readings, the integration creates a
+continuously interpolated long-term statistic for each recorded period.
 
-In einer deutschsprachigen Home-Assistant-Oberfläche wird die Integration als
-**Manuelle Energiemessung** angezeigt.
+In a German-language Home Assistant interface, the integration is displayed as
+**Manuelle Energiemessung**.
 
-## Unterstützte Zähler
+## Supported meters
 
-| Zählertyp | Einheit | Anwendungsbeispiele
+| Meter type | Unit | Example uses
 | --- | --- | --- |
-| Strom | `Wh` oder `kWh` | Hauptstromzähler für Bezug und/oder Einspeisung, PV-Erzeugung |
-| Gas | `kWh` | Gasheizung, Fernwärmestation |
-| Wasser | `L` | Hauptwasserzähler, Gartenwasserzähler |
+| Electricity | `Wh` or `kWh` | Main electricity meter for consumption and/or feed-in, PV generation |
+| Gas | `kWh` | Gas heating, district heating station |
+| Water | `L` | Main water meter, garden water meter |
 
-Jeder Zähler erhält eine eigene Sensorentität und eine eigene externe
-Langzeitstatistik. Die Messwerte bleiben im `.storage`-Verzeichnis von Home
-Assistant erhalten.
+Each meter receives its own sensor entity and external long-term statistic. The
+readings are retained in the `.storage` directory used by Home Assistant.
 
 ## Installation
 
-### Bevorzugt: Installation über HACS
+### Preferred: Installation through HACS
 
-Voraussetzung ist eine bereits eingerichtete HACS-Installation.
+An existing HACS installation is required.
 
-1. Öffne **HACS** in Home Assistant.
-2. Öffne oben rechts das Drei-Punkte-Menü und wähle
-   **Benutzerdefinierte Repositories**.
-3. Trage als Repository
-   `https://github.com/jan-brinkmann/ha-manual-energy-metering` ein.
-4. Wähle als Typ **Integration** und füge das Repository hinzu.
-5. Öffne in HACS **Manual Energy Metering**, wähle **Herunterladen** und
-   installiere die neueste veröffentlichte Version.
-6. Starte Home Assistant vollständig neu.
-7. Öffne **Einstellungen > Geräte & Dienste > Integration hinzufügen** und wähle
-   **Manuelle Energiemessung**.
-8. Lege für jeden physischen Zähler einen eigenen Integrationseintrag an.
+1. Open **HACS** in Home Assistant.
+2. Open the three-dot menu in the upper-right corner and select
+   **Custom repositories**.
+3. Enter
+   `https://github.com/jan-brinkmann/ha-manual-energy-metering` as the
+   repository.
+4. Select **Integration** as the type and add the repository.
+5. Open **Manual Energy Metering** in HACS, select **Download**, and install the
+   latest published version.
+6. Fully restart Home Assistant.
+7. Open **Settings > Devices & services > Add integration** and select
+   **Manual Energy Metering**.
+8. Create a separate integration entry for each physical meter.
 
-### Alternative: Manuelle Installation über GitHub
+### Alternative: Manual installation from GitHub
 
-1. Öffne auf GitHub die Seite **Releases** dieses Repositorys.
-2. Lade unter dem neuesten Release das Archiv **Source code (zip)** herunter und
-   entpacke es.
-3. Kopiere aus dem entpackten Repository den vollständigen Ordner
-   `custom_components/manual_energy_metering` nach
-   `<Konfigurationsverzeichnis>/custom_components/manual_energy_metering`.
-   Bei Home Assistant OS beginnt dieser Pfad normalerweise mit `/config`. Falls
-   `custom_components` noch nicht existiert, lege den Ordner an.
-4. Prüfe, dass die Datei anschließend unter
-   `<Konfigurationsverzeichnis>/custom_components/manual_energy_metering/manifest.json`
-   liegt. Eine zusätzliche Verzeichnisebene aus dem Namen des ZIP-Archivs ist an
-   dieser Stelle falsch.
-5. Starte Home Assistant vollständig neu.
-6. Öffne **Einstellungen > Geräte & Dienste > Integration hinzufügen** und wähle
-   **Manuelle Energiemessung**.
-7. Lege für jeden physischen Zähler einen eigenen Integrationseintrag an.
+1. Open the **Releases** page of this repository on GitHub.
+2. Download **Source code (zip)** from the latest release and extract it.
+3. Copy the complete `custom_components/manual_energy_metering` directory from
+   the extracted repository to
+   `<configuration_directory>/custom_components/manual_energy_metering`.
+   On Home Assistant OS, this path usually starts with `/config`. Create the
+   `custom_components` directory if it does not exist yet.
+4. Verify that the file is located at
+   `<configuration_directory>/custom_components/manual_energy_metering/manifest.json`.
+   An additional directory level named after the ZIP archive is incorrect here.
+5. Fully restart Home Assistant.
+6. Open **Settings > Devices & services > Add integration** and select
+   **Manual Energy Metering**.
+7. Create a separate integration entry for each physical meter.
 
-Anschließend erscheint **Manuelle Energiemessung** im Reiter **Integrationen** als
-eigene Kachel. Nach einem Klick auf die Kachel erscheint für jeden angelegten
-Zähler ein separater Konfigurationseintrag.
+**Manual Energy Metering** then appears as its own card on the
+**Integrations** tab. Clicking the card shows a separate configuration entry for
+each meter that has been created.
 
-## Aktualisierung
+## Updating
 
-### Aktualisierung über HACS
+### Updating through HACS
 
-1. Öffne **HACS** und dort **Manual Energy Metering**.
-2. Lade die von HACS angebotene neue Release-Version herunter.
-3. Starte Home Assistant vollständig neu, sobald HACS den ausstehenden Neustart
-   anzeigt.
+1. Open **HACS**, then open **Manual Energy Metering**.
+2. Download the new release offered by HACS.
+3. Fully restart Home Assistant when HACS indicates that a restart is pending.
 
-### Manuelle Aktualisierung
+### Manual update
 
-1. Lade das Archiv des gewünschten, vorzugsweise neuesten GitHub-Releases herunter
-   und entpacke es.
-2. Ersetze den vorhandenen Ordner
-   `<Konfigurationsverzeichnis>/custom_components/manual_energy_metering` vollständig
-   durch den gleichnamigen Ordner aus dem neuen Release. Kopiere nicht das gesamte
-   Repository in `custom_components`.
-3. Starte Home Assistant vollständig neu. Ein bloßes Neuladen der Integration
-   reicht nach einer Code-Aktualisierung nicht aus.
+1. Download and extract the archive for the desired, preferably latest, GitHub
+   release.
+2. Completely replace the existing
+   `<configuration_directory>/custom_components/manual_energy_metering`
+   directory with the directory of the same name from the new release. Do not
+   copy the entire repository into `custom_components`.
+3. Fully restart Home Assistant. Reloading the integration is not sufficient
+   after updating its code.
 
-Die vorhandenen Integrationseinträge müssen für ein Update nicht gelöscht oder
-neu angelegt werden. Zählerstände und Konfigurationen liegen außerhalb des
-Integrationsordners im Home-Assistant-Speicher und bleiben beim Ersetzen des
-Integrationsordners erhalten. Erstelle unabhängig davon vor Home-Assistant-Updates
-regelmäßig ein Backup deiner Installation.
+Existing integration entries do not need to be deleted or recreated for an
+update. Meter readings and configuration are stored by Home Assistant outside
+the integration directory and remain intact when that directory is replaced.
+Regardless, regularly back up your installation before Home Assistant updates.
 
-## Zählerstände verwalten
+## Managing meter readings
 
-Öffne **Einstellungen > Geräte & Dienste**, suche im Reiter **Integrationen**
-die Kachel **Manuelle Energiemessung** und klicke beim gewünschten Zähler auf das
-Zahnradsymbol. Wähle anschließend eine der angebotenen Funktionen:
+Open **Settings > Devices & services**, find the **Manual Energy Metering** card
+on the **Integrations** tab, and click the gear icon for the desired meter. Then
+select one of the available functions:
 
-- **Zählerstand hinzufügen oder korrigieren:** Gib den absoluten Zählerstand und
-  den Zeitpunkt der Ablesung ein. Messwerte können vor, zwischen oder nach den
-  vorhandenen Ablesungen eingefügt werden. Ein Wert mit einem bereits vorhandenen
-  Zeitstempel korrigiert diesen Wert. Die zeitlich sortierten Zählerstände dürfen
-  nicht sinken.
-- **Zählerstand löschen:** Wähle einen vorhandenen Messwert anhand von Datum,
-  Uhrzeit und Wert aus. Die Auswahl steht zur Verfügung, sobald mindestens ein
-  Messwert existiert.
+- **Add or correct a meter reading:** Enter the absolute meter reading and the
+  time at which it was read. Readings can be inserted before, between, or after
+  existing readings. A value with an existing timestamp corrects that reading.
+  Chronologically sorted meter readings must not decrease.
+- **Delete a meter reading:** Select an existing reading by its date, time, and
+  value. This option is available as soon as at least one reading exists.
 
-Nach jedem Hinzufügen, Korrigieren oder Löschen entfernt die Integration die zuvor
-interpolierte Langzeitstatistik dieses Zählers vollständig und baut sie aus den
-aktuell gespeicherten Messwerten neu auf. Dadurch wird beim Einfügen eines
-Zwischenwerts das alte Intervall in zwei neue Intervalle aufgeteilt. Beim Löschen
-eines Zwischenwerts werden die benachbarten Ablesungen wieder direkt miteinander
-interpoliert.
+After every addition, correction, or deletion, the integration completely
+removes the previously interpolated long-term statistic for that meter and
+rebuilds it from the currently stored readings. Inserting an intermediate
+reading therefore splits the previous interval into two new intervals. Deleting
+an intermediate reading causes the adjacent readings to be interpolated
+directly again.
 
-Alternativ stehen unter **Entwicklerwerkzeuge > Aktionen** die Aktionen
-`manual_energy_metering.add_reading` und
-`manual_energy_metering.delete_reading` zur Verfügung. Sie eignen sich auch für
-Automatisierungen. Beim Löschen muss der Zeitstempel exakt dem gespeicherten
-Ablesezeitpunkt entsprechen.
+Alternatively, the actions `manual_energy_metering.add_reading` and
+`manual_energy_metering.delete_reading` are available under
+**Developer tools > Actions**. They can also be used in automations. When
+deleting a reading, the timestamp must exactly match the stored reading time.
 
-## Zeitangaben und Entitätsverlauf
+## Timestamps and entity history
 
-`recent_readings` und `last_reading_timestamp` sind Attribute der jeweiligen
-Sensorentität und keine eigenen Menüpunkte. Du findest sie so:
+`recent_readings` and `last_reading_timestamp` are attributes of the
+respective sensor entity, not separate menu items. You can find them as follows:
 
-1. Öffne **Entwicklerwerkzeuge > Zustände**.
-2. Suche die Sensorentität des Zählers, zum Beispiel `sensor.wasserzaehler`.
-3. Öffne beziehungsweise erweitere die Entität und lies ihre Zustandsattribute.
+1. Open **Developer tools > States**.
+2. Find the meter sensor entity, for example `sensor.water_meter`.
+3. Open or expand the entity and inspect its state attributes.
 
-`recent_readings` enthält dort die letzten 50 Ablesungen mit Wert und gespeichertem
-Ablesezeitpunkt. `last_reading_timestamp` enthält den Zeitpunkt der neuesten
-Ablesung.
+`recent_readings` contains the 50 most recent readings, including their values
+and stored reading times. `last_reading_timestamp` contains the time of the
+latest reading.
 
-Alle Ablesungen speichert Home Assistant intern in einer Datei unter
-`<Konfigurationsverzeichnis>/.storage/manual_energy_metering.<interne_zaehler_id>`.
-Das Verzeichnis `.storage` ist versteckt und gehört zur internen Datenhaltung von
-Home Assistant. Für die normale Nutzung muss und sollte diese Datei nicht manuell
-geöffnet oder bearbeitet werden.
+Home Assistant stores all readings internally in a file at
+`<configuration_directory>/.storage/manual_energy_metering.<internal_meter_id>`.
+The `.storage` directory is hidden and belongs to the internal data storage of
+Home Assistant. During normal use, this file does not need to and should not be
+opened or edited manually.
 
-Die normale Home-Assistant-Zustandshistorie einer Sensorentität kann nicht
-rückdatiert werden. Sie zeigt deshalb, wann ein Zählerstand in Home Assistant
-eingegeben wurde. Das bedeutet nicht, dass der Ablesezeitpunkt verloren ging. Für
-rückwirkende Diagramme und das Energy Dashboard wird die separate interpolierte
-Langzeitstatistik `manual_energy_metering:*` verwendet.
+The normal Home Assistant state history of a sensor entity cannot be backdated.
+It therefore shows when a reading was entered into Home Assistant. This does not
+mean that the actual reading time has been lost. Retrospective charts and the
+Energy Dashboard use the separate interpolated long-term statistic
+`manual_energy_metering:*`.
 
 ## Energy Dashboard
 
-Nach mindestens zwei Ablesungen erscheint für den Zähler eine Statistik mit dem
-Namen des Zählers. Ihre ID hat die Form
-`manual_energy_metering:<interne_zaehler_id>`. Die konkrete ID steht außerdem im
-Attribut `statistic_id` der Sensorentität.
+After at least two readings, a statistic bearing the meter name appears. Its ID
+has the form `manual_energy_metering:<internal_meter_id>`. The exact ID is also
+available in the sensor entity `statistic_id` attribute.
 
-Wähle diese Statistik in **Einstellungen > Dashboards > Energie** passend als
-Netzverbrauch, Gasverbrauch oder Wasserverbrauch aus. Verwende für die
-rückwirkend interpolierten Daten die Statistik mit dem Präfix
-`manual_energy_metering:` und nicht die automatisch vom aktuellen Sensorzustand
-erzeugte Statistik `sensor.*`.
+Select this statistic under **Settings > Dashboards > Energy** as appropriate
+for grid consumption, gas consumption, or water consumption. For the
+retrospectively interpolated data, use the statistic with the
+`manual_energy_metering:` prefix instead of the `sensor.*` statistic that is
+automatically generated from the current sensor state.
 
-Zwischen zwei Ablesungen wird die Differenz proportional zur tatsächlich
-verstrichenen Zeit auf UTC-Stundenintervalle verteilt. Angefangene Stunden
-erhalten den entsprechenden Teilverbrauch. Vor der ersten und nach der letzten
-Ablesung wird kein Verbrauch extrapoliert.
+Between two readings, the difference is distributed proportionally to the
+actual elapsed time across UTC hourly intervals. Partial hours receive the
+corresponding proportion of consumption. No consumption is extrapolated before
+the first or after the last reading.
 
-## Beispiele
+## Examples
 
-Bei einem Wasserzähler mit `1 L` am 1. Januar um 00:00 Uhr und
-`25 L` am 2. Januar um 00:00 Uhr entstehen 24 Stundenwerte zu jeweils `1 L`.
+A water meter with a reading of `1 L` on January 1 at 00:00 and a reading of
+`25 L` on January 2 at 00:00 produces 24 hourly values of `1 L` each.
 
-Bei einem Stromzähler mit `1000 kWh` am 1. Januar um 00:00 Uhr und `9760 kWh`
-am 1. Januar des Folgejahres ergibt sich ein täglicher Verbrauch von
-`24 kWh = (9760 kWh - 1000 kWh) / 365 Tage` beziehungsweise ein stündlicher
-Verbrauch von `1 kWh`.
+For an electricity meter with a reading of `1000 kWh` on January 1 at 00:00
+and a reading of `9760 kWh` on January 1 of the following year, the daily
+consumption is
+`24 kWh = (9760 kWh - 1000 kWh) / 365 days`, or `1 kWh` per hour.
 
-## Lizenz
+## License
 
-Dieses Projekt wird unter der [MIT-Lizenz](LICENSE) veröffentlicht. Sie erlaubt
-insbesondere die private und kommerzielle Nutzung, Änderung, Weiterentwicklung und
-Weitergabe. Bei Kopien oder wesentlichen Teilen der Software müssen der
-Copyright-Hinweis und der Lizenztext erhalten bleiben.
+This project is released under the [MIT License](LICENSE). In particular, the
+license permits private and commercial use, modification, further development,
+and redistribution. The copyright notice and license text must be retained in
+copies or substantial portions of the software.
 
-Teile dieses Projekts wurden mit Unterstützung generativer KI, darunter OpenAI
-Codex, erstellt und anschließend menschlich geprüft und weiterbearbeitet. Daraus
-entstehen keine zusätzlichen Einschränkungen gegenüber der MIT-Lizenz.
+Parts of this project were created with the assistance of generative AI,
+including OpenAI Codex, and subsequently reviewed and revised by a human. This
+does not impose any additional restrictions beyond the MIT License.

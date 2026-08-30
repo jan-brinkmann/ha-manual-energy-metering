@@ -1,5 +1,6 @@
 const DOMAIN = "manual_energy_metering";
 const STATIC_URL = `/${DOMAIN}_static`;
+const METERS_URL = `/config/integrations/integration/${DOMAIN}`;
 
 const METER_ICONS = {
   electricity: "electricity.png",
@@ -17,6 +18,7 @@ const ICONS = {
 const TRANSLATIONS = {
   en: {
     eyebrow: "Manual Energy Metering",
+    backToMeters: "Back to meter overview",
     fallbackTitle: "Meter readings",
     description:
       "Browse all readings by their actual reading date, not by when they were entered. Page 1 contains the ten latest readings and the form for adding a new one; each following archive page contains up to 100 older readings. Edit changes a reading in place; delete removes it. Every change rebuilds the interpolated Energy Dashboard statistics.",
@@ -61,6 +63,7 @@ const TRANSLATIONS = {
   },
   de: {
     eyebrow: "Manuelle Energiemessung",
+    backToMeters: "Zurück zur Zählerübersicht",
     fallbackTitle: "Zählerstände",
     description:
       "Durchsuche alle Zählerstände nach ihrem tatsächlichen Ablesezeitpunkt, nicht nach dem Eingabezeitpunkt. Seite 1 enthält die zehn neuesten Werte und die Maske für einen neuen Eintrag; jede folgende Archivseite enthält bis zu 100 ältere Werte. Bearbeiten ändert einen Eintrag direkt; Löschen entfernt ihn. Nach jeder Änderung werden die interpolierten Statistiken für das Energy Dashboard neu aufgebaut.",
@@ -252,11 +255,19 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       <style>${this._styles()}</style>
       <main>
         <header class="hero">
-          <div class="eyebrow">${this._escape(t.eyebrow)}</div>
-          <h1>
-            <span>${this._escape(title)}</span>${this._renderMeterTypeIcon()}
-          </h1>
-          <p>${this._escape(t.description)}</p>
+          <a
+            class="back-link"
+            href="${METERS_URL}"
+            aria-label="${this._escapeAttribute(t.backToMeters)}"
+            title="${this._escapeAttribute(t.backToMeters)}"
+          ><ha-icon icon="mdi:arrow-left"></ha-icon></a>
+          <div class="hero-content">
+            <div class="eyebrow">${this._escape(t.eyebrow)}</div>
+            <h1>
+              <span>${this._escape(title)}</span>${this._renderMeterTypeIcon()}
+            </h1>
+            <p>${this._escape(t.description)}</p>
+          </div>
         </header>
 
         ${showForm ? this._renderEntryForm(unit) : ""}
@@ -756,7 +767,30 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         margin: 0 auto;
         padding: 40px 0 64px;
       }
-      .hero { max-width: 820px; margin-bottom: 28px; }
+      .hero {
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr);
+        gap: 8px;
+        max-width: 876px;
+        margin-bottom: 28px;
+      }
+      .hero-content { min-width: 0; }
+      .back-link {
+        display: grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        margin-top: 18px;
+        border-radius: 50%;
+        color: var(--primary-text-color);
+        text-decoration: none;
+      }
+      .back-link:hover { background: var(--secondary-background-color); }
+      .back-link:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+      }
+      .back-link ha-icon { width: 24px; height: 24px; }
       .eyebrow {
         color: var(--primary-color);
         font-size: 0.78rem;
@@ -931,7 +965,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
 
       @media (max-width: 760px) {
         main { width: min(100% - 20px, 620px); padding: 24px 0 40px; }
-        .hero { padding: 0 6px; }
+        .hero {
+          grid-template-columns: 44px minmax(0, 1fr);
+          gap: 4px;
+          padding: 0;
+        }
+        .back-link { width: 44px; height: 44px; margin-top: 16px; }
         h1 { font-size: 2.2rem; }
         .entry-card { padding: 18px; }
         .reading-form { grid-template-columns: 1fr; }

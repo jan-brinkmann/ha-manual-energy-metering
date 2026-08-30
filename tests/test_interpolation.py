@@ -255,6 +255,8 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("useGrouping: false", frontend)
         self.assertIn("_renderPagination", frontend)
         self.assertIn("_renderMeterTypeIcon", frontend)
+        self.assertIn("mdi:arrow-left", frontend)
+        self.assertIn("/config/integrations/integration/${DOMAIN}", frontend)
         for meter_type in ("electricity", "gas", "water"):
             icon = MODULE_DIR / "frontend" / "icons" / f"{meter_type}.png"
             self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))

@@ -17,7 +17,9 @@ intended for Home Assistant users who, for various reasons, cannot equip their
 electricity, gas, and/or water meters with a reading device that automatically
 makes meter readings available to Home Assistant. The integration manages any
 number of manually read electricity, gas, and water meters and distributes the
-consumption between two readings linearly across the affected hours.
+consumption between two readings linearly across the affected hours. The
+resulting interpolated readings can be added to Home Assistant's Energy
+Dashboard.
 
 The integration can also close gaps in existing records. Historical meter
 readings that have been documented by hand or in spreadsheets for years or even

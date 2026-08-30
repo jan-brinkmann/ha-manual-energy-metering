@@ -18,7 +18,8 @@ aus unterschiedlichen Gründen nicht mit einem Lesegerät ausstatten können, da
 Zählerstände automatisch für Home Assistant verfügbar macht. Die Integration
 verwaltet beliebig viele manuell abgelesene Strom-, Gas- und Wasserzähler und
 verteilt den Verbrauch zwischen zwei Ablesungen linear auf die betroffenen
-Stunden.
+Stunden. Die daraus interpolierten Messwerte können anschließend in das Energy
+Dashboard von Home Assistant eingetragen werden.
 
 Mit der Integration lassen sich außerdem Lücken in bereits vorhandenen
 Aufzeichnungen schließen. Ebenso können historische Zählerstände nachgetragen

@@ -108,15 +108,26 @@ Regardless, regularly back up your installation before Home Assistant updates.
 ## Managing meter readings
 
 Open **Settings > Devices & services**, find the **Manual Energy Metering** card
-on the **Integrations** tab, and click the gear icon for the desired meter. Then
-select one of the available functions:
+on the **Integrations** tab, and click the gear icon for the desired meter. This
+opens the shared meter-reading management page. A description above the input
+form explains its available functions.
 
-- **Add or correct a meter reading:** Enter the absolute meter reading and the
-  time at which it was read. Readings can be inserted before, between, or after
-  existing readings. A value with an existing timestamp corrects that reading.
-  Chronologically sorted meter readings must not decrease.
-- **Delete a meter reading:** Select an existing reading by its date, time, and
-  value. This option is available as soon as at least one reading exists.
+The form on page 1 adds a new absolute meter reading. Date and time are
+pre-filled with the current time in the Home Assistant time zone, with seconds
+set to `00`; the meter-reading field remains empty. Use the localized decimal
+separator, but do not enter thousands separators. Readings can be inserted
+before, between, or after existing readings. Adding a value with an existing
+timestamp corrects that reading. Chronologically sorted readings must not
+decrease.
+
+The complete history is divided into reverse-chronological pages. Page 1
+contains only the ten latest readings together with the form for a new reading.
+Each following archive page contains up to 100 older readings. Within each
+page, the newest timestamp is shown first. Every row uses
+localized date, time, and number formatting and provides buttons to edit or
+delete that specific reading. The edit field deliberately omits thousands
+separators and also allows the timestamp to be changed; deletion requires
+confirmation.
 
 After every addition, correction, or deletion, the integration completely
 removes the previously interpolated long-term statistic for that meter and

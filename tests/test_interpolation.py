@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sys
@@ -14,11 +14,13 @@ MODULE_DIR = (
 sys.path.insert(0, str(MODULE_DIR))
 
 from interpolation import (  # noqa: E402
+    DuplicateTimestampError,
     Reading,
-    format_reading_summary,
     hourly_consumption,
     interpolate_value,
+    paginate_readings,
     remove_reading,
+    replace_reading,
     upsert_reading,
 )
 
@@ -125,24 +127,85 @@ class HourlyConsumptionTests(unittest.TestCase):
             [item.consumption for item in result], [5, 5, 5, 15, 15, 15]
         )
 
+    def test_replacing_reading_updates_timestamp_and_value(self) -> None:
+        readings = [
+            Reading(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc), 10),
+            Reading(datetime(2026, 1, 1, 15, 0, tzinfo=timezone.utc), 20),
+            Reading(datetime(2026, 1, 1, 18, 0, tzinfo=timezone.utc), 40),
+        ]
+        replacement_reading = Reading(
+            datetime(2026, 1, 1, 16, 0, tzinfo=timezone.utc), 30
+        )
 
-class FormattingTests(unittest.TestCase):
-    """Verify localized reading summaries used by the options dialog."""
+        updated, original = replace_reading(
+            readings,
+            datetime(2026, 1, 1, 15, 0, tzinfo=timezone.utc),
+            replacement_reading,
+        )
 
-    def test_german_reading_summary(self) -> None:
-        timestamp = datetime(2026, 8, 29, 14, 3, 5, tzinfo=timezone.utc)
+        self.assertEqual(original, readings[1])
+        self.assertEqual(updated[1], replacement_reading)
 
-        result = format_reading_summary(1234567.89, "kWh", timestamp, "de")
+    def test_replacing_reading_rejects_an_occupied_timestamp(self) -> None:
+        readings = [
+            Reading(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc), 10),
+            Reading(datetime(2026, 1, 1, 15, 0, tzinfo=timezone.utc), 20),
+            Reading(datetime(2026, 1, 1, 18, 0, tzinfo=timezone.utc), 40),
+        ]
 
-        self.assertEqual(result, "1.234.567,89 kWh - 29.08.2026, 14:03:05")
+        with self.assertRaises(DuplicateTimestampError):
+            replace_reading(
+                readings,
+                datetime(2026, 1, 1, 15, 0, tzinfo=timezone.utc),
+                Reading(
+                    datetime(2026, 1, 1, 18, 0, tzinfo=timezone.utc), 30
+                ),
+            )
 
-    def test_english_reading_summary(self) -> None:
-        timestamp = datetime(2026, 8, 29, 14, 3, 5, tzinfo=timezone.utc)
 
-        result = format_reading_summary(1234567.89, "kWh", timestamp, "en")
+class PaginationTests(unittest.TestCase):
+    """Verify the current page and reverse-chronological archive pages."""
+
+    @staticmethod
+    def _readings(count: int) -> list[Reading]:
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        return [
+            Reading(start + timedelta(hours=index), index)
+            for index in range(count)
+        ]
+
+    def test_first_page_contains_only_the_ten_newest_readings(self) -> None:
+        readings, page, page_count = paginate_readings(self._readings(211))
+
+        self.assertEqual((page, page_count), (1, 4))
+        self.assertEqual(
+            [reading.value for reading in readings], list(range(210, 200, -1))
+        )
+
+    def test_archive_pages_contain_up_to_one_hundred_readings(self) -> None:
+        all_readings = self._readings(211)
+
+        second, second_page, _ = paginate_readings(all_readings, 2)
+        third, third_page, _ = paginate_readings(all_readings, 3)
+        fourth, fourth_page, page_count = paginate_readings(all_readings, 4)
 
         self.assertEqual(
-            result, "1,234,567.89 kWh - 08/29/2026, 02:03:05 PM"
+            (second_page, third_page, fourth_page, page_count), (2, 3, 4, 4)
+        )
+        self.assertEqual(
+            [reading.value for reading in second], list(range(200, 100, -1))
+        )
+        self.assertEqual(
+            [reading.value for reading in third], list(range(100, 0, -1))
+        )
+        self.assertEqual([reading.value for reading in fourth], [0])
+
+    def test_ten_or_fewer_readings_use_a_single_latest_page(self) -> None:
+        readings, page, page_count = paginate_readings(self._readings(7), 99)
+
+        self.assertEqual((page, page_count), (1, 1))
+        self.assertEqual(
+            [reading.value for reading in readings], list(range(6, -1, -1))
         )
 
 
@@ -176,14 +239,27 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertFalse((MODULE_DIR / "hacs.json").exists())
         self.assertEqual(german["title"], "Manuelle Energiemessung")
 
-    def test_reading_form_has_real_timestamp_default(self) -> None:
+    def test_readings_panel_replaces_the_options_flow(self) -> None:
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
+        init = (MODULE_DIR / "__init__.py").read_text()
+        panel = (MODULE_DIR / "panel.py").read_text()
+        frontend = (MODULE_DIR / "frontend" / "panel.js").read_text()
 
-        self.assertIn(
-            "ATTR_TIMESTAMP, default=default_timestamp", config_flow
-        )
-        self.assertIn("second=0, microsecond=0", config_flow)
-        self.assertIn('strftime("%Y-%m-%d %H:%M:%S")', config_flow)
+        self.assertNotIn("OptionsFlow", config_flow)
+        self.assertIn("async_register_readings_panel(hass)", init)
+        self.assertIn("config_panel_domain=DOMAIN", panel)
+        self.assertIn('const second = zeroSeconds ? "00"', frontend)
+        websocket_api = (MODULE_DIR / "websocket_api.py").read_text()
+        self.assertIn("paginate_readings", websocket_api)
+        self.assertIn("CONF_METER_TYPE: meter.meter_type", websocket_api)
+        self.assertIn("useGrouping: false", frontend)
+        self.assertIn("_renderPagination", frontend)
+        self.assertIn("_renderMeterTypeIcon", frontend)
+        self.assertIn("mdi:arrow-left", frontend)
+        self.assertIn("window.history.back()", frontend)
+        for meter_type in ("electricity", "gas", "water"):
+            icon = MODULE_DIR / "frontend" / "icons" / f"{meter_type}.png"
+            self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
 
 
 if __name__ == "__main__":

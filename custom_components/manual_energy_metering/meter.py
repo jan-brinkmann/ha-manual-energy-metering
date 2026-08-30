@@ -30,10 +30,12 @@ from .const import (
     STORAGE_VERSION,
 )
 from .interpolation import (
+    DuplicateTimestampError,
     Reading,
     hourly_consumption,
     interpolate_value,
     remove_reading,
+    replace_reading,
     upsert_reading,
     validate_readings,
 )
@@ -129,6 +131,38 @@ class ManualEnergyMetering:
         async with self._lock:
             try:
                 updated = upsert_reading(self._readings, reading)
+            except ValueError as err:
+                raise ReadingError("non_monotonic", str(err)) from err
+            await self._async_save_readings(updated)
+
+        for listener in tuple(self._listeners):
+            listener()
+        return reading
+
+    async def async_update_reading(
+        self, original_timestamp: Any, value: Any, timestamp: Any
+    ) -> Reading:
+        """Atomically update one existing reading."""
+        original = self._normalize_timestamp(original_timestamp)
+        reading = Reading(
+            timestamp=self._normalize_timestamp(timestamp),
+            value=self._normalize_value(value),
+        )
+
+        async with self._lock:
+            try:
+                updated, _ = replace_reading(
+                    self._readings, original, reading
+                )
+            except KeyError as err:
+                raise ReadingError(
+                    "reading_not_found", "No reading exists at this timestamp"
+                ) from err
+            except DuplicateTimestampError as err:
+                raise ReadingError(
+                    "timestamp_exists",
+                    "Another reading already exists at the selected timestamp",
+                ) from err
             except ValueError as err:
                 raise ReadingError("non_monotonic", str(err)) from err
             await self._async_save_readings(updated)
@@ -241,7 +275,9 @@ class ManualEnergyMetering:
         try:
             normalized = float(value)
         except (TypeError, ValueError) as err:
-            raise ReadingError("invalid_value", "The meter reading is not a number") from err
+            raise ReadingError(
+                "invalid_value", "The meter reading is not a number"
+            ) from err
         if not math.isfinite(normalized) or normalized < 0:
             raise ReadingError(
                 "invalid_value", "The meter reading must be finite and non-negative"

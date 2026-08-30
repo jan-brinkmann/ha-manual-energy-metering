@@ -22,6 +22,8 @@ from .const import (
     SERVICE_DELETE_READING,
 )
 from .meter import ManualEnergyMetering, ReadingError
+from .panel import async_register_readings_panel
+from .websocket_api import async_register_websocket_commands
 
 ADD_READING_SCHEMA = vol.Schema(
     {
@@ -42,6 +44,8 @@ DELETE_READING_SCHEMA = vol.Schema(
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up integration-level actions."""
     hass.data.setdefault(DOMAIN, {})
+    await async_register_readings_panel(hass)
+    async_register_websocket_commands(hass)
 
     def get_meter(call: ServiceCall) -> ManualEnergyMetering:
         """Resolve a loaded meter from an action call."""

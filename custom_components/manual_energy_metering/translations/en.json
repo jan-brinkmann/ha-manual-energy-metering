@@ -18,38 +18,6 @@
       }
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Manage meter readings",
-        "menu_options": {
-          "add_reading": "Add or correct a meter reading",
-          "delete_reading": "Delete a meter reading"
-        }
-      },
-      "add_reading": {
-        "title": "Add or correct a meter reading",
-        "description": "Enter the absolute reading and the exact date and time. An existing reading with the same timestamp is corrected. New readings may be inserted between existing readings; the interpolation is then recalculated.\n\n**Last meter reading:** {last_reading}",
-        "data": {
-          "value": "Meter reading",
-          "timestamp": "Date and time"
-        }
-      },
-      "delete_reading": {
-        "title": "Delete a meter reading",
-        "description": "Select the reading to delete. Interpolated statistics are rebuilt from the remaining readings.",
-        "data": {
-          "timestamp": "Meter reading"
-        }
-      }
-    },
-    "error": {
-      "invalid_timestamp": "Enter a valid date and time.",
-      "invalid_value": "The reading must be a finite, non-negative number.",
-      "non_monotonic": "This reading would make the meter decrease. Correct the adjacent reading first.",
-      "reading_not_found": "The selected meter reading no longer exists."
-    }
-  },
   "exceptions": {
     "entry_not_found": {
       "message": "The selected Manual Energy Metering entry does not exist."
@@ -68,6 +36,9 @@
     },
     "reading_not_found": {
       "message": "The selected meter reading no longer exists."
+    },
+    "timestamp_exists": {
+      "message": "Another reading already exists at the selected date and time."
     }
   },
   "selector": {

@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 import math
-from typing import Iterable
 
 ONE_HOUR = timedelta(hours=1)
+LATEST_READINGS_PAGE_SIZE = 10
+ARCHIVE_READINGS_PAGE_SIZE = 100
+
+
+class DuplicateTimestampError(ValueError):
+    """Raised when moving a reading onto another existing reading."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +43,10 @@ def _as_utc(value: datetime) -> datetime:
 def validate_readings(readings: Iterable[Reading]) -> list[Reading]:
     """Sort and validate a sequence of readings."""
     ordered = sorted(
-        (Reading(_as_utc(reading.timestamp), float(reading.value)) for reading in readings),
+        (
+            Reading(_as_utc(reading.timestamp), float(reading.value))
+            for reading in readings
+        ),
         key=lambda reading: reading.timestamp,
     )
 
@@ -75,45 +83,54 @@ def remove_reading(
     raise KeyError(point)
 
 
-def _format_number(
-    value: float, *, thousands_separator: str, decimal_separator: str
-) -> str:
-    """Format a reading without losing meaningful decimal places."""
-    formatted = format(Decimal(str(value)), ",f")
-    if "." in formatted:
-        formatted = formatted.rstrip("0").rstrip(".")
+def replace_reading(
+    readings: Iterable[Reading], original_timestamp: datetime, reading: Reading
+) -> tuple[list[Reading], Reading]:
+    """Replace one reading while preserving a unique, monotonic timeline."""
+    updated, original = remove_reading(readings, original_timestamp)
+    point = _as_utc(reading.timestamp)
+    if point != original.timestamp and any(
+        item.timestamp == point for item in updated
+    ):
+        raise DuplicateTimestampError(point)
+    updated.append(Reading(point, float(reading.value)))
+    return validate_readings(updated), original
 
-    integer, separator, fraction = formatted.partition(".")
-    integer = integer.replace(",", thousands_separator)
-    if not separator:
-        return integer
-    return f"{integer}{decimal_separator}{fraction}"
 
-
-def format_reading_summary(
-    value: float, unit: str, timestamp: datetime, language: str
-) -> str:
-    """Format one reading for the German or English flow description."""
-    if language == "de":
-        number = _format_number(
-            value, thousands_separator=".", decimal_separator=","
-        )
-        date_time = (
-            f"{timestamp.day:02d}.{timestamp.month:02d}.{timestamp.year:04d}, "
-            f"{timestamp.hour:02d}:{timestamp.minute:02d}:{timestamp.second:02d}"
-        )
+def paginate_readings(
+    readings: Sequence[Reading], requested_page: int | None = None
+) -> tuple[list[Reading], int, int]:
+    """Return one reverse-chronological page and its pagination metadata."""
+    ordered = validate_readings(readings)
+    reading_count = len(ordered)
+    if reading_count <= LATEST_READINGS_PAGE_SIZE:
+        page_count = 1
+        latest_page_start = 0
     else:
-        number = _format_number(
-            value, thousands_separator=",", decimal_separator="."
-        )
-        hour = timestamp.hour % 12 or 12
-        period = "AM" if timestamp.hour < 12 else "PM"
-        date_time = (
-            f"{timestamp.month:02d}/{timestamp.day:02d}/{timestamp.year:04d}, "
-            f"{hour:02d}:{timestamp.minute:02d}:{timestamp.second:02d} {period}"
-        )
+        archived_count = reading_count - LATEST_READINGS_PAGE_SIZE
+        archive_page_count = (
+            archived_count + ARCHIVE_READINGS_PAGE_SIZE - 1
+        ) // ARCHIVE_READINGS_PAGE_SIZE
+        page_count = archive_page_count + 1
+        latest_page_start = archived_count
+        first_archive_page_size = archived_count - (
+            archive_page_count - 1
+        ) * ARCHIVE_READINGS_PAGE_SIZE
 
-    return f"{number} {unit} - {date_time}"
+    page = page_count if requested_page is None else requested_page
+    page = min(max(page, 1), page_count)
+    if page == page_count:
+        selected = ordered[latest_page_start:]
+    elif page == 1:
+        selected = ordered[:first_archive_page_size]
+    else:
+        start = first_archive_page_size + (
+            page - 2
+        ) * ARCHIVE_READINGS_PAGE_SIZE
+        end = start + ARCHIVE_READINGS_PAGE_SIZE
+        selected = ordered[start:end]
+
+    return list(reversed(selected)), page, page_count
 
 
 def interpolate_value(readings: Iterable[Reading], at: datetime) -> float | None:
@@ -132,7 +149,10 @@ def interpolate_value(readings: Iterable[Reading], at: datetime) -> float | None
         if point <= current.timestamp:
             duration = (current.timestamp - previous.timestamp).total_seconds()
             elapsed = (point - previous.timestamp).total_seconds()
-            return previous.value + (current.value - previous.value) * elapsed / duration
+            return (
+                previous.value
+                + (current.value - previous.value) * elapsed / duration
+            )
 
     return ordered[-1].value
 

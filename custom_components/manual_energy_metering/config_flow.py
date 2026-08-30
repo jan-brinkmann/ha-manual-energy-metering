@@ -7,24 +7,15 @@ from uuid import uuid4
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import CONF_NAME
-from homeassistant.core import callback
 from homeassistant.helpers.selector import (
-    DateTimeSelector,
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
-    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
 )
-from homeassistant.util import dt as dt_util
 
 from .const import (
-    ATTR_TIMESTAMP,
-    ATTR_VALUE,
     CONF_METER_ID,
     CONF_METER_TYPE,
     CONF_UNIT,
@@ -35,8 +26,6 @@ from .const import (
     METER_TYPES,
     UNIT_KWH,
 )
-from .interpolation import format_reading_summary
-from .meter import ManualEnergyMetering, ReadingError
 
 
 class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -104,133 +93,4 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
         self._meter_data[CONF_METER_ID] = meter_id
         return self.async_create_entry(
             title=self._meter_data[CONF_NAME], data=self._meter_data
-        )
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
-        """Return the reading-entry options flow."""
-        return ManualEnergyMeteringOptionsFlow()
-
-
-class ManualEnergyMeteringOptionsFlow(OptionsFlow):
-    """Manage timestamped readings from the options dialog."""
-
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Choose how to manage readings."""
-        meter: ManualEnergyMetering = self.config_entry.runtime_data
-        menu_options: list[str] = ["add_reading"]
-        if meter.readings:
-            menu_options.append("delete_reading")
-        return self.async_show_menu(step_id="init", menu_options=menu_options)
-
-    async def async_step_add_reading(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Add or correct a timestamped reading."""
-        meter: ManualEnergyMetering = self.config_entry.runtime_data
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            try:
-                await meter.async_add_reading(
-                    user_input[ATTR_VALUE], user_input[ATTR_TIMESTAMP]
-                )
-            except ReadingError as err:
-                errors["base"] = err.translation_key
-            else:
-                return self.async_create_entry(title="", data={})
-
-        default_timestamp = (
-            user_input[ATTR_TIMESTAMP]
-            if user_input is not None and ATTR_TIMESTAMP in user_input
-            else dt_util.now().replace(
-                second=0, microsecond=0
-            ).strftime("%Y-%m-%d %H:%M:%S")
-        )
-        language = "de" if self.hass.config.language.startswith("de") else "en"
-        if latest_reading := meter.latest_reading:
-            local_timestamp = latest_reading.timestamp.astimezone(
-                dt_util.get_default_time_zone()
-            )
-            description_placeholders = {
-                "last_reading": format_reading_summary(
-                    latest_reading.value, meter.unit, local_timestamp, language
-                ),
-            }
-        else:
-            description_placeholders = {
-                "last_reading": (
-                    "Noch keiner erfasst."
-                    if language == "de"
-                    else "None recorded."
-                )
-            }
-
-        return self.async_show_form(
-            step_id="add_reading",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(ATTR_VALUE): NumberSelector(
-                        NumberSelectorConfig(
-                            min=0,
-                            mode=NumberSelectorMode.BOX,
-                            step="any",
-                        )
-                    ),
-                    vol.Required(
-                        ATTR_TIMESTAMP, default=default_timestamp
-                    ): DateTimeSelector(),
-                }
-            ),
-            errors=errors,
-            description_placeholders=description_placeholders,
-        )
-
-    async def async_step_delete_reading(
-        self, user_input: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Delete one existing reading."""
-        errors: dict[str, str] = {}
-        meter: ManualEnergyMetering = self.config_entry.runtime_data
-        if user_input is not None:
-            try:
-                await meter.async_delete_reading(user_input[ATTR_TIMESTAMP])
-            except ReadingError as err:
-                errors["base"] = err.translation_key
-            else:
-                return self.async_create_entry(title="", data={})
-
-        options: list[SelectOptionDict] = []
-        for reading in reversed(meter.readings):
-            local_timestamp = reading.timestamp.astimezone(
-                dt_util.get_default_time_zone()
-            )
-            options.append(
-                SelectOptionDict(
-                    value=reading.timestamp.isoformat(),
-                    label=(
-                        f"{local_timestamp:%Y-%m-%d %H:%M:%S} - "
-                        f"{reading.value:g} {meter.unit}"
-                    ),
-                )
-            )
-
-        if not options:
-            return await self.async_step_init()
-
-        return self.async_show_form(
-            step_id="delete_reading",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(ATTR_TIMESTAMP): SelectSelector(
-                        SelectSelectorConfig(
-                            options=options,
-                            mode=SelectSelectorMode.DROPDOWN,
-                        )
-                    )
-                }
-            ),
-            errors=errors,
         )

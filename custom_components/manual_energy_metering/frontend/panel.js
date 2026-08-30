@@ -19,7 +19,7 @@ const TRANSLATIONS = {
     eyebrow: "Manual Energy Metering",
     fallbackTitle: "Meter readings",
     description:
-      "Browse all readings by their actual reading date, not by when they were entered. Archive pages contain up to 100 readings; the last page contains the ten latest readings and the form for adding a new one. Edit changes a reading in place; delete removes it. Every change rebuilds the interpolated Energy Dashboard statistics.",
+      "Browse all readings by their actual reading date, not by when they were entered. Page 1 contains the ten latest readings and the form for adding a new one; each following archive page contains up to 100 older readings. Edit changes a reading in place; delete removes it. Every change rebuilds the interpolated Energy Dashboard statistics.",
     newReading: "Add a new meter reading",
     editReading: "Edit meter reading",
     dateTime: "Date and time",
@@ -63,7 +63,7 @@ const TRANSLATIONS = {
     eyebrow: "Manuelle Energiemessung",
     fallbackTitle: "Zählerstände",
     description:
-      "Durchsuche alle Zählerstände nach ihrem tatsächlichen Ablesezeitpunkt, nicht nach dem Eingabezeitpunkt. Archivseiten enthalten bis zu 100 Werte; die letzte Seite enthält die zehn neuesten Werte und die Maske für einen neuen Eintrag. Bearbeiten ändert einen Eintrag direkt; Löschen entfernt ihn. Nach jeder Änderung werden die interpolierten Statistiken für das Energy Dashboard neu aufgebaut.",
+      "Durchsuche alle Zählerstände nach ihrem tatsächlichen Ablesezeitpunkt, nicht nach dem Eingabezeitpunkt. Seite 1 enthält die zehn neuesten Werte und die Maske für einen neuen Eintrag; jede folgende Archivseite enthält bis zu 100 ältere Werte. Bearbeiten ändert einen Eintrag direkt; Löschen entfernt ihn. Nach jeder Änderung werden die interpolierten Statistiken für das Energy Dashboard neu aufgebaut.",
     newReading: "Neuen Zählerstand eintragen",
     editReading: "Zählerstand bearbeiten",
     dateTime: "Datum und Uhrzeit",

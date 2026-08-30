@@ -69,7 +69,7 @@ def _meter_payload(
         "reading_count": len(meter.readings),
         "page": page,
         "page_count": page_count,
-        "is_latest_page": page == page_count,
+        "is_latest_page": page == 1,
         "readings": [
             {
                 ATTR_TIMESTAMP: reading.timestamp.isoformat(),

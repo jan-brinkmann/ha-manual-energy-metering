@@ -101,36 +101,25 @@ def paginate_readings(
     readings: Sequence[Reading], requested_page: int | None = None
 ) -> tuple[list[Reading], int, int]:
     """Return one reverse-chronological page and its pagination metadata."""
-    ordered = validate_readings(readings)
-    reading_count = len(ordered)
-    if reading_count <= LATEST_READINGS_PAGE_SIZE:
-        page_count = 1
-        latest_page_start = 0
-    else:
-        archived_count = reading_count - LATEST_READINGS_PAGE_SIZE
-        archive_page_count = (
-            archived_count + ARCHIVE_READINGS_PAGE_SIZE - 1
-        ) // ARCHIVE_READINGS_PAGE_SIZE
-        page_count = archive_page_count + 1
-        latest_page_start = archived_count
-        first_archive_page_size = archived_count - (
-            archive_page_count - 1
-        ) * ARCHIVE_READINGS_PAGE_SIZE
+    ordered = list(reversed(validate_readings(readings)))
+    archived_count = max(0, len(ordered) - LATEST_READINGS_PAGE_SIZE)
+    archive_page_count = (
+        archived_count + ARCHIVE_READINGS_PAGE_SIZE - 1
+    ) // ARCHIVE_READINGS_PAGE_SIZE
+    page_count = archive_page_count + 1
 
-    page = page_count if requested_page is None else requested_page
+    page = 1 if requested_page is None else requested_page
     page = min(max(page, 1), page_count)
-    if page == page_count:
-        selected = ordered[latest_page_start:]
-    elif page == 1:
-        selected = ordered[:first_archive_page_size]
+    if page == 1:
+        selected = ordered[:LATEST_READINGS_PAGE_SIZE]
     else:
-        start = first_archive_page_size + (
+        start = LATEST_READINGS_PAGE_SIZE + (
             page - 2
         ) * ARCHIVE_READINGS_PAGE_SIZE
         end = start + ARCHIVE_READINGS_PAGE_SIZE
         selected = ordered[start:end]
 
-    return list(reversed(selected)), page, page_count
+    return selected, page, page_count
 
 
 def interpolate_value(readings: Iterable[Reading], at: datetime) -> float | None:

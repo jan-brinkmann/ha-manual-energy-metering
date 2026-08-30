@@ -164,7 +164,7 @@ class HourlyConsumptionTests(unittest.TestCase):
 
 
 class PaginationTests(unittest.TestCase):
-    """Verify chronological archive pages and the latest-reading page."""
+    """Verify the current page and reverse-chronological archive pages."""
 
     @staticmethod
     def _readings(count: int) -> list[Reading]:
@@ -174,10 +174,10 @@ class PaginationTests(unittest.TestCase):
             for index in range(count)
         ]
 
-    def test_latest_page_contains_only_the_ten_newest_readings(self) -> None:
+    def test_first_page_contains_only_the_ten_newest_readings(self) -> None:
         readings, page, page_count = paginate_readings(self._readings(211))
 
-        self.assertEqual((page, page_count), (4, 4))
+        self.assertEqual((page, page_count), (1, 4))
         self.assertEqual(
             [reading.value for reading in readings], list(range(210, 200, -1))
         )
@@ -185,20 +185,20 @@ class PaginationTests(unittest.TestCase):
     def test_archive_pages_contain_up_to_one_hundred_readings(self) -> None:
         all_readings = self._readings(211)
 
-        first, first_page, page_count = paginate_readings(all_readings, 1)
         second, second_page, _ = paginate_readings(all_readings, 2)
         third, third_page, _ = paginate_readings(all_readings, 3)
+        fourth, fourth_page, page_count = paginate_readings(all_readings, 4)
 
         self.assertEqual(
-            (first_page, second_page, third_page, page_count), (1, 2, 3, 4)
-        )
-        self.assertEqual([reading.value for reading in first], [0])
-        self.assertEqual(
-            [reading.value for reading in second], list(range(100, 0, -1))
+            (second_page, third_page, fourth_page, page_count), (2, 3, 4, 4)
         )
         self.assertEqual(
-            [reading.value for reading in third], list(range(200, 100, -1))
+            [reading.value for reading in second], list(range(200, 100, -1))
         )
+        self.assertEqual(
+            [reading.value for reading in third], list(range(100, 0, -1))
+        )
+        self.assertEqual([reading.value for reading in fourth], [0])
 
     def test_ten_or_fewer_readings_use_a_single_latest_page(self) -> None:
         readings, page, page_count = paginate_readings(self._readings(7), 99)

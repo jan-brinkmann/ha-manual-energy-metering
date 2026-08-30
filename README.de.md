@@ -118,7 +118,7 @@ Zahnradsymbol. Dadurch öffnet sich die gemeinsame Verwaltungsseite für die
 Zählerstände. Oberhalb der Eingabemaske beschreibt ein kurzer Text die
 verfügbaren Funktionen.
 
-Mit der Eingabemaske auf der letzten Seite wird ein neuer absoluter Zählerstand
+Mit der Eingabemaske auf Seite 1 wird ein neuer absoluter Zählerstand
 erfasst. Datum und Uhrzeit sind mit der aktuellen Zeit in der
 Home-Assistant-Zeitzone vorbelegt, wobei die Sekunden auf `00` gesetzt werden;
 das Feld für den Zählerstand bleibt leer. Verwende das lokalisierte
@@ -127,11 +127,11 @@ zwischen oder nach vorhandenen Ablesungen eingefügt werden. Ein Wert mit einem
 bereits vorhandenen Zeitstempel korrigiert diesen Wert. Die zeitlich sortierten
 Zählerstände dürfen nicht sinken.
 
-Die vollständige Historie ist in chronologische Seiten unterteilt. Seite 1
-enthält die ältesten Zählerstände, Archivseiten enthalten jeweils bis zu 100
-Werte und die letzte Seite enthält ausschließlich die zehn neuesten Werte sowie
-die Eingabemaske für einen neuen Zählerstand. Innerhalb jeder Seite steht der
-neueste Ablesezeitpunkt oben. Jede Zeile verwendet lokalisierte Datums-,
+Die vollständige Historie ist in absteigend chronologische Seiten unterteilt.
+Seite 1 enthält ausschließlich die zehn neuesten Werte sowie die Eingabemaske
+für einen neuen Zählerstand. Jede folgende Archivseite enthält bis zu 100 ältere
+Werte. Innerhalb jeder Seite steht der neueste Ablesezeitpunkt oben. Jede Zeile
+verwendet lokalisierte Datums-,
 Uhrzeit- und Zahlenformatierung und besitzt Schaltflächen zum Bearbeiten und
 Löschen. Das Eingabefeld beim Bearbeiten enthält bewusst keine
 Tausendertrennzeichen; auch der Zeitstempel kann geändert werden. Vor dem

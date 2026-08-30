@@ -112,7 +112,7 @@ on the **Integrations** tab, and click the gear icon for the desired meter. This
 opens the shared meter-reading management page. A description above the input
 form explains its available functions.
 
-The form on the last page adds a new absolute meter reading. Date and time are
+The form on page 1 adds a new absolute meter reading. Date and time are
 pre-filled with the current time in the Home Assistant time zone, with seconds
 set to `00`; the meter-reading field remains empty. Use the localized decimal
 separator, but do not enter thousands separators. Readings can be inserted
@@ -120,10 +120,10 @@ before, between, or after existing readings. Adding a value with an existing
 timestamp corrects that reading. Chronologically sorted readings must not
 decrease.
 
-The complete history is divided into chronological pages. Page 1 contains the
-oldest readings, archive pages contain up to 100 readings each, and the last
-page contains only the ten latest readings together with the form for a new
-reading. Within each page, the newest timestamp is shown first. Every row uses
+The complete history is divided into reverse-chronological pages. Page 1
+contains only the ten latest readings together with the form for a new reading.
+Each following archive page contains up to 100 older readings. Within each
+page, the newest timestamp is shown first. Every row uses
 localized date, time, and number formatting and provides buttons to edit or
 delete that specific reading. The edit field deliberately omits thousands
 separators and also allows the timestamp to be changed; deletion requires

@@ -1,6 +1,5 @@
 const DOMAIN = "manual_energy_metering";
 const STATIC_URL = `/${DOMAIN}_static`;
-const METERS_URL = `/config/integrations/integration/${DOMAIN}`;
 
 const METER_ICONS = {
   electricity: "electricity.png",
@@ -18,7 +17,7 @@ const ICONS = {
 const TRANSLATIONS = {
   en: {
     eyebrow: "Manual Energy Metering",
-    backToMeters: "Back to meter overview",
+    back: "Back",
     fallbackTitle: "Meter readings",
     description:
       "Browse all readings by their actual reading date, not by when they were entered. Page 1 contains the ten latest readings and the form for adding a new one; each following archive page contains up to 100 older readings. Edit changes a reading in place; delete removes it. Every change rebuilds the interpolated Energy Dashboard statistics.",
@@ -63,7 +62,7 @@ const TRANSLATIONS = {
   },
   de: {
     eyebrow: "Manuelle Energiemessung",
-    backToMeters: "Zurück zur Zählerübersicht",
+    back: "Zurück",
     fallbackTitle: "Zählerstände",
     description:
       "Durchsuche alle Zählerstände nach ihrem tatsächlichen Ablesezeitpunkt, nicht nach dem Eingabezeitpunkt. Seite 1 enthält die zehn neuesten Werte und die Maske für einen neuen Eintrag; jede folgende Archivseite enthält bis zu 100 ältere Werte. Bearbeiten ändert einen Eintrag direkt; Löschen entfernt ihn. Nach jeder Änderung werden die interpolierten Statistiken für das Energy Dashboard neu aufgebaut.",
@@ -255,12 +254,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       <style>${this._styles()}</style>
       <main>
         <header class="hero">
-          <a
-            class="back-link"
-            href="${METERS_URL}"
-            aria-label="${this._escapeAttribute(t.backToMeters)}"
-            title="${this._escapeAttribute(t.backToMeters)}"
-          ><ha-icon icon="mdi:arrow-left"></ha-icon></a>
+          <button
+            id="back-button"
+            class="back-button"
+            type="button"
+            aria-label="${this._escapeAttribute(t.back)}"
+            title="${this._escapeAttribute(t.back)}"
+          ><ha-icon icon="mdi:arrow-left"></ha-icon></button>
           <div class="hero-content">
             <div class="eyebrow">${this._escape(t.eyebrow)}</div>
             <h1>
@@ -305,6 +305,9 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this.shadowRoot
       .querySelector("#reading-form")
       ?.addEventListener("submit", (event) => this._submit(event));
+    this.shadowRoot
+      .querySelector("#back-button")
+      ?.addEventListener("click", () => window.history.back());
     this.shadowRoot
       .querySelector("#cancel-edit")
       ?.addEventListener("click", () => this._cancelEdit());
@@ -775,22 +778,26 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         margin-bottom: 28px;
       }
       .hero-content { min-width: 0; }
-      .back-link {
+      .back-button {
         display: grid;
         place-items: center;
         width: 48px;
         height: 48px;
+        min-height: 0;
         margin-top: 18px;
+        padding: 0;
+        border: 0;
         border-radius: 50%;
         color: var(--primary-text-color);
-        text-decoration: none;
+        background: transparent;
+        cursor: pointer;
       }
-      .back-link:hover { background: var(--secondary-background-color); }
-      .back-link:focus-visible {
+      .back-button:hover { background: var(--secondary-background-color); }
+      .back-button:focus-visible {
         outline: 2px solid var(--primary-color);
         outline-offset: 2px;
       }
-      .back-link ha-icon { width: 24px; height: 24px; }
+      .back-button ha-icon { width: 24px; height: 24px; }
       .eyebrow {
         color: var(--primary-color);
         font-size: 0.78rem;
@@ -970,7 +977,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
           gap: 4px;
           padding: 0;
         }
-        .back-link { width: 44px; height: 44px; margin-top: 16px; }
+        .back-button { width: 44px; height: 44px; margin-top: 16px; }
         h1 { font-size: 2.2rem; }
         .entry-card { padding: 18px; }
         .reading-form { grid-template-columns: 1fr; }

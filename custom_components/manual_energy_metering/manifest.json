@@ -6,7 +6,9 @@
   ],
   "config_flow": true,
   "dependencies": [
+    "frontend",
     "http",
+    "lovelace",
     "panel_custom",
     "recorder",
     "websocket_api"

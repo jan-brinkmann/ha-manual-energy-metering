@@ -1,5 +1,69 @@
 """Compare the former full rebuild with differential interpolation updates."""
 
+# Benchmark design
+# ----------------
+#
+# This benchmark compares two interpolation strategies for the same reading
+# edit. It intentionally keeps the former implementation in this file, so a
+# later run does not depend on Git history, a previous release, or `git diff`.
+# The current differential implementation is imported from the integration and
+# therefore changes when the production implementation changes.
+#
+# Former full-rebuild strategy
+# ----------------------------
+#
+# The legacy implementation validates and sorts every reading, walks every
+# interpolation segment, and distributes the complete history into UTC hourly
+# buckets. The production code then removed the meter's complete long-term
+# statistic from Home Assistant's recorder and imported every calculated hour
+# again. Consequently, changing a single recent reading still recalculated and
+# rewrote years or decades of unaffected history.
+#
+# Current differential strategy
+# -----------------------------
+#
+# The current implementation compares the old and new piecewise-linear curves
+# between their combined support points. Ranges whose linear functions and
+# coverage are identical are discarded before any hourly calculation. Only
+# hours touched by a genuinely changed range become candidates.
+#
+# For each candidate hour, the old and new hourly consumption and cumulative
+# value are calculated. The update plan contains only:
+#
+# - `delete_starts`: hours that existed before but are no longer covered.
+# - `upsert`: new hours and existing hours whose calculated values changed.
+#
+# Candidate hours whose final hourly values are equal are omitted. This also
+# means that adding a collinear reading, or changing a curve only inside one
+# hour without changing that hour's aggregate, causes no recorder write.
+# Unaffected recorder rows retain their database identity and stored values.
+#
+# What is measured
+# ----------------
+#
+# The `Old ms` and `New ms` columns measure only Python calculation time. They
+# deliberately exclude storage writes, recorder queue latency, SQL execution,
+# transaction commits, and Home Assistant scheduling. Garbage collection runs
+# before every sample, and the table reports the median to reduce noise.
+#
+# `Old del/upsert` shows how many hourly rows the former production workflow
+# discarded and reimported. `New del/upsert` shows the exact row counts in the
+# differential update plan. These counts describe recorder work but do not
+# pretend to be database timing measurements.
+#
+# Synthetic data and scenarios
+# ----------------------------
+#
+# The generated readings are monotonic, approximately monthly, and have varying
+# deltas so middle corrections and deletions change the neighboring slopes. The
+# scenarios cover appending the latest reading, correcting and deleting a
+# middle reading, deleting the latest reading, and inserting a collinear middle
+# reading that must produce an empty update plan.
+#
+# Results are machine- and Python-version-dependent. Compare relative timings
+# and affected row counts rather than treating absolute milliseconds as a Home
+# Assistant end-to-end performance guarantee.
+
 from __future__ import annotations
 
 import argparse
@@ -166,12 +230,14 @@ def main() -> None:
     print("-" * 94)
 
     for scenario in scenarios:
+        # Time the preserved full-history calculation used by the old workflow.
         old_ms = benchmark(
             lambda scenario=scenario: legacy_hourly_consumption(
                 scenario.new_readings
             ),
             args.repeat,
         )
+        # Time production's old-versus-new differential update planner.
         new_ms = benchmark(
             lambda scenario=scenario: changed_hourly_statistics(
                 scenario.old_readings,
@@ -180,6 +246,8 @@ def main() -> None:
             ),
             args.repeat,
         )
+        # Calculate row counts outside the timed samples. The old workflow
+        # cleared every current row and imported every row of the new history.
         new_rows = len(legacy_hourly_consumption(scenario.new_readings))
         update = changed_hourly_statistics(
             scenario.old_readings, scenario.new_readings, baseline

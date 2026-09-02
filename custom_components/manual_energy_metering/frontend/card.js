@@ -1,6 +1,13 @@
 const DOMAIN = "manual_energy_metering";
+const STATIC_URL = `/${DOMAIN}_static`;
 const CARD_TAG = "manual-energy-metering-card";
 const EDITOR_TAG = "manual-energy-metering-card-editor";
+
+const METER_ICONS = {
+  electricity: "electricity.png",
+  gas: "gas.png",
+  water: "water.png",
+};
 
 const DEFAULT_CONFIG = {
   show_name: true,
@@ -308,6 +315,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
         attributes.friendly_name ||
         entityId ||
         this._t.fallbackName,
+      meterType: attributes.meter_type,
       unit: result.unit ?? attributes.unit_of_measurement ?? "",
       lastReading:
         result.last_reading !== undefined
@@ -339,11 +347,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
       <ha-card>
-        <div class="accent" aria-hidden="true"></div>
         <div class="content">
           ${
             showName
-              ? `<h2>${this._escape(data.name)}</h2>`
+              ? `<h2><span>${this._escape(
+                  data.name
+                )}</span>${this._renderMeterTypeIcon(data.meterType)}</h2>`
               : ""
           }
           ${this._renderSummary(
@@ -442,6 +451,14 @@ class ManualEnergyMeteringCard extends HTMLElement {
         }
       </dl>
     `;
+  }
+
+  _renderMeterTypeIcon(meterType) {
+    const filename = METER_ICONS[meterType];
+    if (!filename) {
+      return "";
+    }
+    return `<img class="meter-type-icon" src="${STATIC_URL}/icons/${filename}" alt="" aria-hidden="true" />`;
   }
 
   _resetHistoryLink() {
@@ -662,14 +679,6 @@ class ManualEnergyMeteringCard extends HTMLElement {
         color: var(--primary-text-color);
         background: var(--ha-card-background, var(--card-background-color));
       }
-      .accent {
-        height: 4px;
-        background: linear-gradient(
-          90deg,
-          var(--primary-color),
-          var(--accent-color, var(--primary-color))
-        );
-      }
       .content { padding: 20px; }
       h2 {
         margin: 0 0 16px;
@@ -677,20 +686,24 @@ class ManualEnergyMeteringCard extends HTMLElement {
         line-height: 1.3;
         font-weight: 500;
       }
+      .meter-type-icon {
+        width: auto;
+        height: 0.72em;
+        margin-left: 0.24em;
+        vertical-align: -0.035em;
+      }
       .summary {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-        gap: 10px;
-        margin: 0 0 20px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px 24px;
+        margin: 0 0 16px;
       }
       .summary div {
         min-width: 0;
-        padding: 12px 14px;
-        border-radius: 12px;
-        background: var(--secondary-background-color);
       }
+      .summary div:only-child { grid-column: 1 / -1; }
       dt {
-        margin-bottom: 4px;
+        margin-bottom: 2px;
         color: var(--secondary-text-color);
         font-size: 0.78rem;
         line-height: 1.2;
@@ -788,6 +801,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
       }
       .history-link a:hover { text-decoration: underline; }
       @media (max-width: 620px) {
+        .summary { column-gap: 12px; }
         form { grid-template-columns: 1fr; }
         button { width: 100%; }
       }

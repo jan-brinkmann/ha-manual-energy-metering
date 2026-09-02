@@ -124,6 +124,10 @@ hinzu:
    letzten Ablesung und ein Link zur vollständigen Historie angezeigt werden
    sollen.
 
+Wenn der Zählername aktiviert ist, erscheint direkt dahinter das Symbol für
+Strom, Gas oder Wasser. Der letzte Zählerstand und sein Ablesedatum werden als
+kompakter Text ohne separate Hintergrundboxen dargestellt.
+
 Die Karte belegt das Ablesedatum mit dem aktuellen Datum und der aktuellen Zeit
 in der Home-Assistant-Zeitzone vor und setzt die Sekunden auf `00`. Das Feld für
 den Zählerstand bleibt leer. Verwende das lokalisierte Dezimaltrennzeichen, aber

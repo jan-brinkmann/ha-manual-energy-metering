@@ -117,6 +117,10 @@ services**. Add one card for each meter:
 4. Choose separately whether the meter name, last meter reading, date of the
    last reading, and a link to the complete history are displayed.
 
+When the meter name is enabled, its electricity, gas, or water symbol is shown
+directly after the name. The latest reading and its reading date are displayed
+as compact text without separate background boxes.
+
 The card pre-fills the reading date with the current date and time in the Home
 Assistant time zone and sets the seconds to `00`. The meter-reading input stays
 empty. Use the localized decimal separator, but do not enter thousands

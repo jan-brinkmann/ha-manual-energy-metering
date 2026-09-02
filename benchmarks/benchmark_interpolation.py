@@ -63,6 +63,29 @@
 # Results are machine- and Python-version-dependent. Compare relative timings
 # and affected row counts rather than treating absolute milliseconds as a Home
 # Assistant end-to-end performance guarantee.
+#
+# How to run
+# ----------
+#
+# Run the benchmark from the repository root with the system's Python 3:
+#
+#     python3 benchmarks/benchmark_interpolation.py
+#
+# The default run generates 20 years of readings and reports the median of
+# three measurements per scenario. Use `--years` to change the simulated
+# history size and `--repeat` to change the number of timed measurements:
+#
+#     python3 benchmarks/benchmark_interpolation.py --years 40 --repeat 5
+#
+# Larger histories make the difference between rebuilding all hourly rows and
+# updating only affected hours easier to observe, but require more runtime and
+# memory. Increase `--repeat` when comparing code revisions to reduce timing
+# noise. Use the same Python version, arguments, and machine for comparable
+# results.
+#
+# `Old ms` and `New ms` contain the median calculation times. `Speedup` is old
+# time divided by new time. The final two columns show deleted and upserted
+# hourly rows as `delete/upsert`; they are operation counts, not timings.
 
 from __future__ import annotations
 

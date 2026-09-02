@@ -407,6 +407,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("CONF_METER_TYPE: meter.meter_type", websocket_api)
         self.assertIn("useGrouping: false", frontend)
         self.assertIn("_renderPagination", frontend)
+        self.assertIn('dateTime: "Ablesedatum und Uhrzeit"', frontend)
         self.assertIn("_renderMeterTypeIcon", frontend)
         self.assertIn("mdi:arrow-left", frontend)
         self.assertIn("window.history.back()", frontend)

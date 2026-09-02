@@ -129,12 +129,13 @@ delete that specific reading. The edit field deliberately omits thousands
 separators and also allows the timestamp to be changed; deletion requires
 confirmation.
 
-After every addition, correction, or deletion, the integration completely
-removes the previously interpolated long-term statistic for that meter and
-rebuilds it from the currently stored readings. Inserting an intermediate
-reading therefore splits the previous interval into two new intervals. Deleting
-an intermediate reading causes the adjacent readings to be interpolated
-directly again.
+After every addition, correction, or deletion, the integration compares the old
+and new neighboring interpolation segments. It updates only hourly statistic
+rows whose interpolated consumption or cumulative value actually changes and
+deletes only hours that are no longer covered. All other statistic rows remain
+unchanged. Inserting an intermediate reading therefore splits the previous
+interval into two new intervals. Deleting an intermediate reading causes the
+adjacent readings to be interpolated directly again.
 
 Alternatively, the actions `manual_energy_metering.add_reading` and
 `manual_energy_metering.delete_reading` are available under

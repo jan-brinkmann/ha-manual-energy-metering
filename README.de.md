@@ -137,12 +137,14 @@ Löschen. Das Eingabefeld beim Bearbeiten enthält bewusst keine
 Tausendertrennzeichen; auch der Zeitstempel kann geändert werden. Vor dem
 Löschen ist eine Bestätigung erforderlich.
 
-Nach jedem Hinzufügen, Korrigieren oder Löschen entfernt die Integration die zuvor
-interpolierte Langzeitstatistik dieses Zählers vollständig und baut sie aus den
-aktuell gespeicherten Messwerten neu auf. Dadurch wird beim Einfügen eines
-Zwischenwerts das alte Intervall in zwei neue Intervalle aufgeteilt. Beim Löschen
-eines Zwischenwerts werden die benachbarten Ablesungen wieder direkt miteinander
-interpoliert.
+Nach jedem Hinzufügen, Korrigieren oder Löschen vergleicht die Integration die
+alten und neuen benachbarten Interpolationsabschnitte. Sie aktualisiert nur
+Stundenwerte, deren interpolierter Verbrauch oder kumulierter Wert sich
+tatsächlich ändert, und löscht nur nicht mehr abgedeckte Stunden. Alle übrigen
+Statistikzeilen bleiben unverändert erhalten. Dadurch wird beim Einfügen eines
+Zwischenwerts das alte Intervall in zwei neue Intervalle aufgeteilt. Beim
+Löschen eines Zwischenwerts werden die benachbarten Ablesungen wieder direkt
+miteinander interpoliert.
 
 Alternativ stehen unter **Entwicklerwerkzeuge > Aktionen** die Aktionen
 `manual_energy_metering.add_reading` und

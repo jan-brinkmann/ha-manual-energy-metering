@@ -111,7 +111,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.runtime_data = meter
     hass.data[DOMAIN][entry.entry_id] = meter
 
-    meter.async_rebuild_statistics()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 

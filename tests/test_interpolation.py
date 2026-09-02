@@ -7,15 +7,18 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 MODULE_DIR = (
     Path(__file__).parents[1] / "custom_components" / "manual_energy_metering"
 )
 sys.path.insert(0, str(MODULE_DIR))
 
+import interpolation as interpolation_module  # noqa: E402
 from interpolation import (  # noqa: E402
     DuplicateTimestampError,
     Reading,
+    changed_hourly_statistics,
     hourly_consumption,
     interpolate_value,
     paginate_readings,
@@ -163,6 +166,155 @@ class HourlyConsumptionTests(unittest.TestCase):
             )
 
 
+class HourlyStatisticsUpdateTests(unittest.TestCase):
+    """Verify that only genuinely changed statistics hours are touched."""
+
+    @staticmethod
+    def _reading(hour: int, value: float) -> Reading:
+        return Reading(datetime(2026, 1, 1, hour, tzinfo=timezone.utc), value)
+
+    def test_identical_readings_do_not_create_an_update(self) -> None:
+        readings = [self._reading(0, 0), self._reading(6, 60)]
+
+        update = changed_hourly_statistics(readings, readings, 0)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual(update.upsert, ())
+
+    def test_collinear_insert_preserves_every_existing_hour(self) -> None:
+        old = [self._reading(0, 0), self._reading(6, 60)]
+        new = [old[0], self._reading(3, 30), old[1]]
+
+        with patch.object(
+            interpolation_module,
+            "_hourly_consumption_at",
+            wraps=interpolation_module._hourly_consumption_at,
+        ) as calculator:
+            update = changed_hourly_statistics(old, new, 0)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual(update.upsert, ())
+        calculator.assert_not_called()
+
+    def test_middle_insert_updates_only_its_neighboring_intervals(self) -> None:
+        old = [
+            self._reading(0, 0),
+            self._reading(6, 60),
+            self._reading(9, 90),
+        ]
+        new = [old[0], self._reading(3, 15), old[1], old[2]]
+
+        update = changed_hourly_statistics(old, new, 0)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual([item.start.hour for item in update.upsert], list(range(6)))
+
+    def test_middle_delete_updates_only_its_neighboring_intervals(self) -> None:
+        old = [
+            self._reading(0, 0),
+            self._reading(3, 15),
+            self._reading(6, 60),
+            self._reading(9, 90),
+        ]
+        new = [old[0], old[2], old[3]]
+
+        update = changed_hourly_statistics(old, new, 0)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual([item.start.hour for item in update.upsert], list(range(6)))
+
+    def test_middle_value_change_does_not_touch_later_intervals(self) -> None:
+        old = [
+            self._reading(0, 0),
+            self._reading(3, 30),
+            self._reading(6, 60),
+            self._reading(9, 90),
+        ]
+        new = [old[0], self._reading(3, 15), old[2], old[3]]
+
+        update = changed_hourly_statistics(old, new, 0)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual([item.start.hour for item in update.upsert], list(range(6)))
+
+    def test_collinear_timestamp_change_preserves_every_hour(self) -> None:
+        old = [
+            self._reading(0, 0),
+            self._reading(3, 30),
+            self._reading(6, 60),
+        ]
+        new = [old[0], self._reading(4, 40), old[2]]
+
+        update = changed_hourly_statistics(old, new, 0)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual(update.upsert, ())
+
+    def test_change_within_one_hour_preserves_the_same_hour_total(self) -> None:
+        old = [
+            Reading(datetime(2026, 1, 1, 0, 10, tzinfo=timezone.utc), 0),
+            Reading(datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc), 10),
+            Reading(datetime(2026, 1, 1, 0, 50, tzinfo=timezone.utc), 20),
+        ]
+        new = [old[0], Reading(old[1].timestamp, 5), old[2]]
+
+        update = changed_hourly_statistics(old, new, 0)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual(update.upsert, ())
+
+    def test_partial_hours_update_only_across_the_neighboring_boundary(self) -> None:
+        old = [
+            Reading(datetime(2026, 1, 1, 0, 10, tzinfo=timezone.utc), 0),
+            Reading(datetime(2026, 1, 1, 0, 40, tzinfo=timezone.utc), 30),
+            Reading(datetime(2026, 1, 1, 1, 20, tzinfo=timezone.utc), 70),
+            Reading(datetime(2026, 1, 1, 3, 20, tzinfo=timezone.utc), 190),
+        ]
+        new = [old[0], Reading(old[1].timestamp, 20), old[2], old[3]]
+
+        update = changed_hourly_statistics(old, new, 0)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual([item.start.hour for item in update.upsert], [0, 1])
+
+    def test_deleting_first_reading_only_removes_its_old_hours(self) -> None:
+        old = [
+            self._reading(0, 0),
+            self._reading(3, 30),
+            self._reading(6, 60),
+        ]
+
+        update = changed_hourly_statistics(old, old[1:], 0)
+
+        self.assertEqual(
+            [start.hour for start in update.delete_starts], [0, 1, 2]
+        )
+        self.assertEqual(update.upsert, ())
+
+    def test_adding_earlier_reading_preserves_existing_later_hours(self) -> None:
+        old = [self._reading(3, 30), self._reading(6, 60)]
+        new = [self._reading(0, 0), *old]
+
+        update = changed_hourly_statistics(old, new, 30)
+
+        self.assertEqual(update.delete_starts, ())
+        self.assertEqual([item.start.hour for item in update.upsert], [0, 1, 2])
+
+    def test_deleting_last_reading_only_removes_its_old_hours(self) -> None:
+        old = [
+            self._reading(0, 0),
+            self._reading(3, 30),
+            self._reading(6, 60),
+        ]
+
+        update = changed_hourly_statistics(old, old[:-1], 0)
+
+        self.assertEqual(
+            [start.hour for start in update.delete_starts], [3, 4, 5]
+        )
+        self.assertEqual(update.upsert, ())
+
+
 class PaginationTests(unittest.TestCase):
     """Verify the current page and reverse-chronological archive pages."""
 
@@ -242,6 +394,7 @@ class IntegrationIdentityTests(unittest.TestCase):
     def test_readings_panel_replaces_the_options_flow(self) -> None:
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
         init = (MODULE_DIR / "__init__.py").read_text()
+        meter = (MODULE_DIR / "meter.py").read_text()
         panel = (MODULE_DIR / "panel.py").read_text()
         frontend = (MODULE_DIR / "frontend" / "panel.js").read_text()
 
@@ -257,6 +410,12 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("_renderMeterTypeIcon", frontend)
         self.assertIn("mdi:arrow-left", frontend)
         self.assertIn("window.history.back()", frontend)
+        self.assertNotIn("async_clear_statistics", meter)
+        self.assertNotIn("async_rebuild_statistics", meter)
+        self.assertNotIn("async_rebuild_statistics", init)
+        self.assertIn("changed_hourly_statistics", meter)
+        self.assertIn("Statistics.start_ts.in_(batch)", meter)
+        self.assertIn('"statistics_baseline"', meter)
         for meter_type in ("electricity", "gas", "water"):
             icon = MODULE_DIR / "frontend" / "icons" / f"{meter_type}.png"
             self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))

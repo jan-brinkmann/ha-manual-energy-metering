@@ -141,7 +141,8 @@ Für Administratoren öffnet der optionale Historienlink genau die zählerspezif
 Verwaltungsseite, die auch über **Einstellungen > Geräte & Dienste > Manuelle
 Energiemessung > Zahnradsymbol** erreichbar ist. Für Benutzer ohne
 Administratorrechte bleibt der Link verborgen, da diese Verwaltungsseite
-Administratorrechte voraussetzt.
+Administratorrechte voraussetzt. Er wird direkt unterhalb der Schaltfläche zum
+Eintragen eines Zählerstands angezeigt.
 
 Alternativ kann die Karte manuell im YAML-Editor eines Dashboards konfiguriert
 werden:

@@ -131,7 +131,8 @@ control permission for the selected meter entity to submit a reading.
 For administrators, the optional history link opens exactly the meter-specific
 management page that is also reached through **Settings > Devices & services >
 Manual Energy Metering > gear icon**. The link is hidden for non-administrators
-because that management page requires administrator privileges.
+because that management page requires administrator privileges. It is displayed
+directly below the button for adding a reading.
 
 The same card can be configured manually in a dashboard's YAML editor:
 

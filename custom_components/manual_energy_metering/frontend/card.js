@@ -21,8 +21,6 @@ const TRANSLATIONS = {
     cardName: "Manual Energy Metering",
     cardDescription: "Enter a dated meter reading directly from a dashboard.",
     fallbackName: "Manual meter",
-    newReading: "New meter reading",
-    intro: "Record a new absolute reading for this meter.",
     meterReading: "Meter reading",
     readingDate: "Reading date and time",
     lastReading: "Last reading",
@@ -60,8 +58,6 @@ const TRANSLATIONS = {
     cardDescription:
       "Einen datierten Zählerstand direkt über ein Dashboard erfassen.",
     fallbackName: "Manueller Zähler",
-    newReading: "Neuer Zählerstand",
-    intro: "Erfasse einen neuen absoluten Stand für diesen Zähler.",
     meterReading: "Zählerstand",
     readingDate: "Ablesedatum und Uhrzeit",
     lastReading: "Letzter Zählerstand",
@@ -360,48 +356,44 @@ class ManualEnergyMeteringCard extends HTMLElement {
             showLastReading,
             showLastReadingTimestamp
           )}
-          <section class="entry">
-            <div class="entry-heading">
-              <span class="eyebrow">${this._escape(t.newReading)}</span>
-              <p>${this._escape(t.intro)}</p>
-            </div>
-            <form id="reading-form">
-              <label>
-                <span>${this._escape(t.meterReading + unit)}</span>
-                <input
-                  id="value"
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  required
-                  value="${this._escapeAttribute(this._formValue)}"
-                />
-              </label>
-              <label>
-                <span>${this._escape(t.readingDate)}</span>
-                <input
-                  id="timestamp"
-                  type="datetime-local"
-                  step="1"
-                  required
-                  value="${this._escapeAttribute(this._formTimestamp)}"
-                />
-              </label>
+          <form id="reading-form">
+            <label>
+              <span>${this._escape(t.readingDate)}</span>
+              <input
+                id="timestamp"
+                type="datetime-local"
+                step="1"
+                required
+                value="${this._escapeAttribute(this._formTimestamp)}"
+              />
+            </label>
+            <label>
+              <span>${this._escape(t.meterReading + unit)}</span>
+              <input
+                id="value"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                required
+                value="${this._escapeAttribute(this._formValue)}"
+              />
+            </label>
+            <div class="form-actions">
               <button type="submit" ${
                 !hasEntity || !available || this._busy ? "disabled" : ""
               }>
-                <ha-icon icon="mdi:send"></ha-icon>
+                <ha-icon icon="mdi:plus"></ha-icon>
                 <span>${this._escape(t.add)}</span>
               </button>
-            </form>
-          </section>
+              ${this._renderHistoryLink()}
+            </div>
+          </form>
           <div class="message ${this._escapeAttribute(
             this._message?.type || ""
           )}" role="status" aria-live="polite">${this._escape(
             this._message?.text ||
               (!hasEntity ? t.selectEntity : !available ? t.unavailable : "")
           )}</div>
-          ${this._renderHistoryLink()}
         </div>
       </ha-card>
     `;
@@ -677,14 +669,17 @@ class ManualEnergyMeteringCard extends HTMLElement {
       ha-card {
         overflow: hidden;
         color: var(--primary-text-color);
-        background: var(--ha-card-background, var(--card-background-color));
+        background: var(--card-background-color);
+        border: 1px solid var(--divider-color);
+        border-radius: 18px;
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.08);
       }
-      .content { padding: 20px; }
+      .content { padding: 24px; }
       h2 {
-        margin: 0 0 16px;
+        margin: 0 0 12px;
         font-size: 1.25rem;
         line-height: 1.3;
-        font-weight: 500;
+        font-weight: 600;
       }
       .meter-type-icon {
         width: auto;
@@ -696,7 +691,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px 24px;
-        margin: 0 0 16px;
+        margin: 0 0 18px;
       }
       .summary div {
         min-width: 0;
@@ -714,81 +709,85 @@ class ManualEnergyMeteringCard extends HTMLElement {
         font-size: 1rem;
         font-weight: 500;
       }
-      .entry {
-        padding-top: 16px;
-        border-top: 1px solid var(--divider-color);
-      }
-      .entry-heading { margin-bottom: 13px; }
-      .eyebrow {
-        color: var(--primary-color);
-        font-size: 0.82rem;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
-      p {
-        margin: 4px 0 0;
-        color: var(--secondary-text-color);
-        font-size: 0.9rem;
-      }
       form {
         display: grid;
-        grid-template-columns: minmax(125px, 0.8fr) minmax(210px, 1.2fr) auto;
-        gap: 12px;
-        align-items: end;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        align-items: start;
       }
-      label { display: grid; gap: 6px; min-width: 0; }
+      label { display: grid; gap: 7px; min-width: 0; }
       label span {
         color: var(--secondary-text-color);
-        font-size: 0.8rem;
-        font-weight: 500;
+        font-size: 0.82rem;
+        font-weight: 700;
       }
       input {
         width: 100%;
-        height: 42px;
-        padding: 0 12px;
-        border: 1px solid var(--outline-color, var(--divider-color));
-        border-radius: 10px;
-        outline: none;
+        height: 48px;
+        padding: 0 13px;
+        border: 1px solid var(--divider-color);
+        border-radius: 11px;
         color: var(--primary-text-color);
-        background: var(--card-background-color);
+        background: var(--input-fill-color, var(--secondary-background-color));
         font: inherit;
+        outline: none;
         color-scheme: light dark;
       }
       input:focus {
         border-color: var(--primary-color);
-        box-shadow: 0 0 0 1px var(--primary-color);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 22%, transparent);
       }
       button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 8px;
-        min-height: 42px;
-        padding: 0 16px;
+        min-height: 48px;
+        padding: 0 15px;
         border: 0;
-        border-radius: 10px;
-        color: var(--text-primary-color, white);
+        border-radius: 11px;
+        color: var(--text-primary-color, #fff);
         background: var(--primary-color);
         font: inherit;
-        font-weight: 600;
+        font-weight: 700;
         cursor: pointer;
       }
-      button:disabled { opacity: 0.45; cursor: default; }
+      button:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+      }
+      button:disabled { opacity: 0.55; cursor: wait; }
       ha-icon { --mdc-icon-size: 19px; }
+      .form-actions {
+        grid-column: 1 / -1;
+        display: grid;
+        justify-items: start;
+        gap: 10px;
+      }
       .message {
-        min-height: 1.25em;
-        margin-top: 12px;
+        min-height: 0;
+        margin-top: 0;
         color: var(--secondary-text-color);
         font-size: 0.85rem;
       }
-      .message:empty { margin-top: 0; min-height: 0; }
-      .message.success { color: var(--success-color, #2e7d32); }
-      .message.error { color: var(--error-color); }
+      .message:not(:empty) {
+        margin-top: 16px;
+        padding: 11px 13px;
+        border-radius: 10px;
+        font-weight: 600;
+      }
+      .message.success {
+        color: var(--success-color, #2e7d32);
+        background: color-mix(in srgb, var(--success-color, #2e7d32) 10%, transparent);
+      }
+      .message.error {
+        color: var(--error-color);
+        background: color-mix(in srgb, var(--error-color) 10%, transparent);
+      }
       .history-link {
         display: flex;
-        justify-content: flex-end;
-        margin-top: 12px;
+        justify-content: flex-start;
+        margin-top: 0;
       }
       .history-link a {
         display: inline-flex;
@@ -801,9 +800,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
       }
       .history-link a:hover { text-decoration: underline; }
       @media (max-width: 620px) {
+        .content { padding: 18px; }
         .summary { column-gap: 12px; }
         form { grid-template-columns: 1fr; }
+        .form-actions { grid-column: auto; justify-items: stretch; }
         button { width: 100%; }
+        .history-link { justify-content: center; }
       }
     `;
   }

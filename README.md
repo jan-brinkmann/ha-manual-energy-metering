@@ -105,6 +105,50 @@ update. Meter readings and configuration are stored by Home Assistant outside
 the integration directory and remain intact when that directory is replaced.
 Regardless, regularly back up your installation before Home Assistant updates.
 
+## Dashboard card
+
+The integration provides the **Manual Energy Metering** dashboard card for
+entering new readings without navigating through **Settings > Devices &
+services**. Add one card for each meter:
+
+1. Open the desired dashboard and select **Edit dashboard**.
+2. Select **Add card** and choose **Manual Energy Metering**.
+3. Select the sensor entity belonging to the desired meter.
+4. Choose separately whether the meter name, last meter reading, date of the
+   last reading, and a link to the complete history are displayed.
+
+The card pre-fills the reading date with the current date and time in the Home
+Assistant time zone and sets the seconds to `00`. The meter-reading input stays
+empty. Use the localized decimal separator, but do not enter thousands
+separators. Displayed readings and dates use the Home Assistant locale. The
+card follows Home Assistant's entity permissions; the signed-in user needs
+control permission for the selected meter entity to submit a reading.
+
+For administrators, the optional history link opens exactly the meter-specific
+management page that is also reached through **Settings > Devices & services >
+Manual Energy Metering > gear icon**. The link is hidden for non-administrators
+because that management page requires administrator privileges.
+
+The same card can be configured manually in a dashboard's YAML editor:
+
+```yaml
+type: custom:manual-energy-metering-card
+entity: sensor.water_meter
+show_name: true
+show_last_reading: true
+show_last_reading_timestamp: true
+show_history_link: true
+```
+
+The integration automatically creates or updates a versioned Lovelace module
+resource for the card, so no separate dashboard resource needs to be added in
+the normal storage mode. In the legacy YAML resource mode, the integration uses
+Home Assistant's global frontend-module loader instead because YAML resources
+are read-only. After installing or updating the integration, fully restart Home
+Assistant and reload the browser page if the card is not yet shown in the card
+picker. The management page described below remains available for browsing,
+editing, and deleting stored readings.
+
 ## Managing meter readings
 
 Open **Settings > Devices & services**, find the **Manual Energy Metering** card

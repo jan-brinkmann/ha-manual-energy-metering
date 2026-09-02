@@ -420,6 +420,52 @@ class IntegrationIdentityTests(unittest.TestCase):
             icon = MODULE_DIR / "frontend" / "icons" / f"{meter_type}.png"
             self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_dashboard_card_is_registered_and_entity_scoped(self) -> None:
+        manifest = json.loads((MODULE_DIR / "manifest.json").read_text())
+        panel = (MODULE_DIR / "panel.py").read_text()
+        websocket_api = (MODULE_DIR / "websocket_api.py").read_text()
+        card = (MODULE_DIR / "frontend" / "card.js").read_text()
+
+        self.assertIn("frontend", manifest["dependencies"])
+        self.assertIn("lovelace", manifest["dependencies"])
+        self.assertIn("async_get_integration(hass, DOMAIN)", panel)
+        self.assertIn(
+            'hass, f"{CARD_URL}?v={integration.version}"',
+            panel,
+        )
+        self.assertIn("ResourceStorageCollection", panel)
+        self.assertIn("CONF_RESOURCE_TYPE_WS", panel)
+        self.assertIn("resources.async_create_item", panel)
+        self.assertIn("resources.async_update_item", panel)
+        self.assertIn('item.get(CONF_URL, "").partition("?")[0]', panel)
+        self.assertIn("add_extra_js_url(hass, card_url)", panel)
+        self.assertIn('CARD_URL = f"{PANEL_URL}/card.js"', panel)
+        self.assertIn("WS_CARD_ADD_READING", websocket_api)
+        self.assertIn("POLICY_CONTROL", websocket_api)
+        self.assertIn("permissions.check_entity", websocket_api)
+        self.assertIn("entity_entry.platform != DOMAIN", websocket_api)
+        self.assertIn('vol.Required("entity_id"): cv.entity_id', websocket_api)
+        card_command = websocket_api[
+            websocket_api.index('vol.Required("type"): WS_CARD_ADD_READING') :
+        ]
+        self.assertNotIn("@websocket_api.require_admin", card_command)
+        self.assertIn("customElements.define(CARD_TAG", card)
+        self.assertIn("window.customCards", card)
+        self.assertIn("Object.assign(existingMetadata, cardMetadata)", card)
+        self.assertIn("getConfigElement", card)
+        self.assertIn('filter: [{ integration: DOMAIN, domain: "sensor" }]', card)
+        self.assertIn("show_name", card)
+        self.assertIn("show_last_reading", card)
+        self.assertIn("show_last_reading_timestamp", card)
+        self.assertIn("show_history_link", card)
+        self.assertIn('type: "config/entity_registry/get"', card)
+        self.assertIn("entityEntry.config_entry_id", card)
+        self.assertIn("encodeURIComponent", card)
+        self.assertIn('type="datetime-local"', card)
+        self.assertIn("${parts.minute}:00", card)
+        self.assertIn('type: `${DOMAIN}/card/add`', card)
+        self.assertIn("useGrouping: false", card)
+
 
 if __name__ == "__main__":
     unittest.main()

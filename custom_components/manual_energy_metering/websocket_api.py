@@ -1,4 +1,4 @@
-"""WebSocket API for the meter-reading management panel."""
+"""WebSocket API for the meter-reading frontend."""
 
 from __future__ import annotations
 
@@ -6,9 +6,12 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.auth.permissions.const import POLICY_CONTROL
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import Unauthorized
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 
 from .const import (
     ATTR_TIMESTAMP,
@@ -24,15 +27,17 @@ WS_LIST_READINGS = f"{DOMAIN}/readings/list"
 WS_ADD_READING = f"{DOMAIN}/readings/add"
 WS_UPDATE_READING = f"{DOMAIN}/readings/update"
 WS_DELETE_READING = f"{DOMAIN}/readings/delete"
+WS_CARD_ADD_READING = f"{DOMAIN}/card/add"
 PAGE_SCHEMA = vol.All(vol.Coerce(int), vol.Range(min=1))
 
 
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
-    """Register all commands used by the readings panel."""
+    """Register commands used by the management panel and dashboard card."""
     websocket_api.async_register_command(hass, websocket_list_readings)
     websocket_api.async_register_command(hass, websocket_add_reading)
     websocket_api.async_register_command(hass, websocket_update_reading)
     websocket_api.async_register_command(hass, websocket_delete_reading)
+    websocket_api.async_register_command(hass, websocket_card_add_reading)
 
 
 def _meter_for_message(
@@ -78,6 +83,56 @@ def _meter_payload(
             for reading in readings
         ],
     }
+
+
+def _card_payload(meter: ManualEnergyMetering) -> dict[str, Any]:
+    """Serialize the latest reading for a dashboard card."""
+    latest = meter.latest_reading
+    return {
+        "name": meter.name,
+        "unit": meter.unit,
+        "last_reading": latest.value if latest else None,
+        "last_reading_timestamp": (
+            latest.timestamp.isoformat() if latest else None
+        ),
+    }
+
+
+def _meter_for_entity(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> ManualEnergyMetering | None:
+    """Resolve a card's sensor after checking entity-level permissions."""
+    entity_id = msg["entity_id"]
+    if not connection.user.permissions.check_entity(entity_id, POLICY_CONTROL):
+        raise Unauthorized(entity_id=entity_id)
+
+    entity_entry = er.async_get(hass).async_get(entity_id)
+    if (
+        entity_entry is None
+        or entity_entry.platform != DOMAIN
+        or entity_entry.config_entry_id is None
+    ):
+        connection.send_error(
+            msg["id"],
+            "entity_not_found",
+            "The selected meter entity does not exist.",
+        )
+        return None
+
+    entry = hass.config_entries.async_get_entry(entity_entry.config_entry_id)
+    if entry is None or entry.domain != DOMAIN:
+        connection.send_error(
+            msg["id"], "entry_not_found", "The selected meter does not exist."
+        )
+        return None
+    if entry.state is not ConfigEntryState.LOADED:
+        connection.send_error(
+            msg["id"], "entry_not_loaded", "The selected meter is not loaded."
+        )
+        return None
+    return entry.runtime_data
 
 
 def _send_reading_error(
@@ -198,3 +253,28 @@ async def websocket_delete_reading(
     connection.send_result(
         msg["id"], _meter_payload(meter, msg.get("page"))
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_CARD_ADD_READING,
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required(ATTR_VALUE): vol.Any(int, float, str),
+        vol.Required(ATTR_TIMESTAMP): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_card_add_reading(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Add a reading from a dashboard card for an authorized entity."""
+    if (meter := _meter_for_entity(hass, connection, msg)) is None:
+        return
+    try:
+        await meter.async_add_reading(msg[ATTR_VALUE], msg[ATTR_TIMESTAMP])
+    except ReadingError as err:
+        _send_reading_error(connection, msg, err)
+        return
+    connection.send_result(msg["id"], _card_payload(meter))

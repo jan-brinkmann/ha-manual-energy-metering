@@ -110,103 +110,49 @@ Integrationsordners im Home-Assistant-Speicher und bleiben beim Ersetzen des
 Integrationsordners erhalten. Erstelle unabhängig davon vor Home-Assistant-Updates
 regelmäßig ein Backup deiner Installation.
 
-## Dashboard-Karte
-
-Die Integration stellt die Dashboard-Karte **Manuelle Energiemessung** bereit,
-mit der neue Zählerstände ohne den Umweg über **Einstellungen > Geräte &
-Dienste** eingetragen werden können. Füge für jeden Zähler eine eigene Karte
-hinzu:
-
-1. Öffne das gewünschte Dashboard und wähle **Dashboard bearbeiten**.
-2. Wähle **Karte hinzufügen** und anschließend **Manuelle Energiemessung**.
-3. Wähle die Sensorentität des gewünschten Zählers aus.
-4. Lege getrennt fest, ob der Zählername, der letzte Zählerstand, das Datum der
-   letzten Ablesung und ein Link zur vollständigen Historie angezeigt werden
-   sollen.
-
-Wenn der Zählername aktiviert ist, erscheint direkt dahinter das Symbol für
-Strom, Gas oder Wasser. Der letzte Zählerstand und sein Ablesedatum werden als
-kompakter Text ohne separate Hintergrundboxen dargestellt.
-
-Die Karte belegt das Ablesedatum mit dem aktuellen Datum und der aktuellen Zeit
-in der Home-Assistant-Zeitzone vor und setzt die Sekunden auf `00`. Das Feld für
-den Zählerstand bleibt leer. Verwende das lokalisierte Dezimaltrennzeichen, aber
-keine Tausendertrennzeichen. Angezeigte Zählerstände und Datumsangaben werden
-entsprechend der Home-Assistant-Lokalisierung formatiert. Die Karte berücksichtigt
-die Entitätsberechtigungen von Home Assistant; der angemeldete Nutzer benötigt
-die Steuerungsberechtigung für die ausgewählte Zählerentität, um einen Wert
-einzutragen.
-
-Für Administratoren öffnet der optionale Historienlink genau die zählerspezifische
-Verwaltungsseite, die auch über **Einstellungen > Geräte & Dienste > Manuelle
-Energiemessung > Zahnradsymbol** erreichbar ist. Für Benutzer ohne
-Administratorrechte bleibt der Link verborgen, da diese Verwaltungsseite
-Administratorrechte voraussetzt. Er wird direkt unterhalb der Schaltfläche zum
-Eintragen eines Zählerstands angezeigt.
-
-Alternativ kann die Karte manuell im YAML-Editor eines Dashboards konfiguriert
-werden:
-
-```yaml
-type: custom:manual-energy-metering-card
-entity: sensor.wasserzaehler
-show_name: true
-show_last_reading: true
-show_last_reading_timestamp: true
-show_history_link: true
-```
-
-Die Integration legt im normalen Storage-Modus automatisch eine versionierte
-Lovelace-Modulressource für die Karte an beziehungsweise aktualisiert sie. Eine
-separate Dashboard-Ressource muss daher nicht hinzugefügt werden. Im alten
-YAML-Ressourcenmodus verwendet die Integration stattdessen den globalen
-Frontend-Modul-Loader von Home Assistant, da YAML-Ressourcen schreibgeschützt
-sind. Starte Home Assistant nach der Installation oder Aktualisierung vollständig
-neu und lade die Browserseite neu, falls die Karte noch nicht in der
-Kartenauswahl erscheint. Die nachfolgend beschriebene Verwaltungsseite bleibt
-zum Anzeigen, Bearbeiten und Löschen gespeicherter Zählerstände erhalten.
-
 ## Zählerstände verwalten
 
-Öffne **Einstellungen > Geräte & Dienste**, suche im Reiter **Integrationen**
-die Kachel **Manuelle Energiemessung** und klicke beim gewünschten Zähler auf das
-Zahnradsymbol. Dadurch öffnet sich die gemeinsame Verwaltungsseite für die
-Zählerstände. Oberhalb der Eingabemaske beschreibt ein kurzer Text die
-verfügbaren Funktionen.
+Öffne **Einstellungen > Geräte & Dienste**, wähle **Manuelle Energiemessung**
+im Reiter **Integrationen** und klicke beim gewünschten Zähler auf das
+Zahnradsymbol.
 
-Mit der Eingabemaske auf Seite 1 wird ein neuer absoluter Zählerstand
-erfasst. Datum und Uhrzeit sind mit der aktuellen Zeit in der
-Home-Assistant-Zeitzone vorbelegt, wobei die Sekunden auf `00` gesetzt werden;
-das Feld für den Zählerstand bleibt leer. Verwende das lokalisierte
-Dezimaltrennzeichen, aber keine Tausendertrennzeichen. Messwerte können vor,
-zwischen oder nach vorhandenen Ablesungen eingefügt werden. Ein Wert mit einem
-bereits vorhandenen Zeitstempel korrigiert diesen Wert. Die zeitlich sortierten
-Zählerstände dürfen nicht sinken.
+Auf der Verwaltungsseite kannst du Zählerstände eintragen, bearbeiten, löschen
+und die vollständige Historie ansehen. Es können auch Zählerstände hinzugefügt
+werden, die zwischen zwei vorhandenen Messwerten liegen. Die Interpolationen
+werden anschließend entsprechend angepasst.
 
-Die vollständige Historie ist in absteigend chronologische Seiten unterteilt.
-Seite 1 enthält ausschließlich die zehn neuesten Werte sowie die Eingabemaske
-für einen neuen Zählerstand. Jede folgende Archivseite enthält bis zu 100 ältere
-Werte. Innerhalb jeder Seite steht der neueste Ablesezeitpunkt oben. Jede Zeile
-verwendet lokalisierte Datums-,
-Uhrzeit- und Zahlenformatierung und besitzt Schaltflächen zum Bearbeiten und
-Löschen. Das Eingabefeld beim Bearbeiten enthält bewusst keine
-Tausendertrennzeichen; auch der Zeitstempel kann geändert werden. Vor dem
-Löschen ist eine Bestätigung erforderlich.
-
-Nach jedem Hinzufügen, Korrigieren oder Löschen vergleicht die Integration die
-alten und neuen benachbarten Interpolationsabschnitte. Sie aktualisiert nur
-Stundenwerte, deren interpolierter Verbrauch oder kumulierter Wert sich
-tatsächlich ändert, und löscht nur nicht mehr abgedeckte Stunden. Alle übrigen
-Statistikzeilen bleiben unverändert erhalten. Dadurch wird beim Einfügen eines
-Zwischenwerts das alte Intervall in zwei neue Intervalle aufgeteilt. Beim
-Löschen eines Zwischenwerts werden die benachbarten Ablesungen wieder direkt
-miteinander interpoliert.
-
-Alternativ stehen unter **Entwicklerwerkzeuge > Aktionen** die Aktionen
+Zusätzlich stehen unter **Entwicklerwerkzeuge > Aktionen** die Aktionen
 `manual_energy_metering.add_reading` und
-`manual_energy_metering.delete_reading` zur Verfügung. Sie eignen sich auch für
-Automatisierungen. Beim Löschen muss der Zeitstempel exakt dem gespeicherten
-Ablesezeitpunkt entsprechen.
+`manual_energy_metering.delete_reading` für Automatisierungen zur Verfügung.
+Zum Löschen ist der exakte gespeicherte Zeitstempel erforderlich.
+
+## Energy Dashboard
+
+Nach mindestens zwei Ablesungen erscheint für den Zähler eine Statistik mit dem
+Namen des Zählers. Ihre ID hat die Form
+`manual_energy_metering:<interne_zaehler_id>`. Die konkrete ID steht auf der
+Verwaltungsseite des Zählers und außerdem im Attribut `statistic_id` der
+Sensorentität.
+
+Wähle diese Statistik in **Einstellungen > Dashboards > Energie** passend als
+Netzverbrauch, Gasverbrauch oder Wasserverbrauch aus. Verwende für die
+rückwirkend interpolierten Daten die Statistik mit dem Präfix
+`manual_energy_metering:` und nicht die automatisch vom aktuellen Sensorzustand
+erzeugte Statistik `sensor.*`.
+
+Zwischen zwei Ablesungen wird die Differenz proportional zur tatsächlich
+verstrichenen Zeit auf Stundenintervalle verteilt. Angefangene Stunden
+erhalten den entsprechenden Teilverbrauch. Vor der ersten und nach der letzten
+Ablesung wird kein Verbrauch extrapoliert.
+
+## Dashboard-Karte
+
+Mit der Dashboard-Karte **Manuelle Energiemessung** kannst du einen Zählerstand
+direkt im Dashboard eintragen. Füge sie über **Dashboard bearbeiten > Karte
+hinzufügen > Manuelle Energiemessung** hinzu und wähle die Zählerentität.
+
+Starte Home Assistant nach Installation oder Aktualisierung vollständig neu und
+lade den Browser neu, falls die Karte nicht in der Kartenauswahl erscheint.
 
 ## Zeitangaben und Entitätsverlauf
 
@@ -232,24 +178,6 @@ rückdatiert werden. Sie zeigt deshalb, wann ein Zählerstand in Home Assistant
 eingegeben wurde. Das bedeutet nicht, dass der Ablesezeitpunkt verloren ging. Für
 rückwirkende Diagramme und das Energy Dashboard wird die separate interpolierte
 Langzeitstatistik `manual_energy_metering:*` verwendet.
-
-## Energy Dashboard
-
-Nach mindestens zwei Ablesungen erscheint für den Zähler eine Statistik mit dem
-Namen des Zählers. Ihre ID hat die Form
-`manual_energy_metering:<interne_zaehler_id>`. Die konkrete ID steht außerdem im
-Attribut `statistic_id` der Sensorentität.
-
-Wähle diese Statistik in **Einstellungen > Dashboards > Energie** passend als
-Netzverbrauch, Gasverbrauch oder Wasserverbrauch aus. Verwende für die
-rückwirkend interpolierten Daten die Statistik mit dem Präfix
-`manual_energy_metering:` und nicht die automatisch vom aktuellen Sensorzustand
-erzeugte Statistik `sensor.*`.
-
-Zwischen zwei Ablesungen wird die Differenz proportional zur tatsächlich
-verstrichenen Zeit auf UTC-Stundenintervalle verteilt. Angefangene Stunden
-erhalten den entsprechenden Teilverbrauch. Vor der ersten und nach der letzten
-Ablesung wird kein Verbrauch extrapoliert.
 
 ## Beispiele
 

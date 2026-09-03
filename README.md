@@ -18,7 +18,7 @@ electricity, gas, and/or water meters with a reading device that automatically
 makes meter readings available to Home Assistant. The integration manages any
 number of manually read electricity, gas, and water meters and distributes the
 consumption between two readings linearly across the affected hours. The
-resulting interpolated readings can be added to Home Assistant's Energy
+resulting interpolated readings can then be added to Home Assistant's Energy
 Dashboard.
 
 The integration can also close gaps in existing records. Historical meter
@@ -105,91 +105,46 @@ update. Meter readings and configuration are stored by Home Assistant outside
 the integration directory and remain intact when that directory is replaced.
 Regardless, regularly back up your installation before Home Assistant updates.
 
-## Dashboard card
-
-The integration provides the **Manual Energy Metering** dashboard card for
-entering new readings without navigating through **Settings > Devices &
-services**. Add one card for each meter:
-
-1. Open the desired dashboard and select **Edit dashboard**.
-2. Select **Add card** and choose **Manual Energy Metering**.
-3. Select the sensor entity belonging to the desired meter.
-4. Choose separately whether the meter name, last meter reading, date of the
-   last reading, and a link to the complete history are displayed.
-
-When the meter name is enabled, its electricity, gas, or water symbol is shown
-directly after the name. The latest reading and its reading date are displayed
-as compact text without separate background boxes.
-
-The card pre-fills the reading date with the current date and time in the Home
-Assistant time zone and sets the seconds to `00`. The meter-reading input stays
-empty. Use the localized decimal separator, but do not enter thousands
-separators. Displayed readings and dates use the Home Assistant locale. The
-card follows Home Assistant's entity permissions; the signed-in user needs
-control permission for the selected meter entity to submit a reading.
-
-For administrators, the optional history link opens exactly the meter-specific
-management page that is also reached through **Settings > Devices & services >
-Manual Energy Metering > gear icon**. The link is hidden for non-administrators
-because that management page requires administrator privileges. It is displayed
-directly below the button for adding a reading.
-
-The same card can be configured manually in a dashboard's YAML editor:
-
-```yaml
-type: custom:manual-energy-metering-card
-entity: sensor.water_meter
-show_name: true
-show_last_reading: true
-show_last_reading_timestamp: true
-show_history_link: true
-```
-
-The integration automatically creates or updates a versioned Lovelace module
-resource for the card, so no separate dashboard resource needs to be added in
-the normal storage mode. In the legacy YAML resource mode, the integration uses
-Home Assistant's global frontend-module loader instead because YAML resources
-are read-only. After installing or updating the integration, fully restart Home
-Assistant and reload the browser page if the card is not yet shown in the card
-picker. The management page described below remains available for browsing,
-editing, and deleting stored readings.
-
 ## Managing meter readings
 
-Open **Settings > Devices & services**, find the **Manual Energy Metering** card
-on the **Integrations** tab, and click the gear icon for the desired meter. This
-opens the shared meter-reading management page. A description above the input
-form explains its available functions.
+Open **Settings > Devices & services**, select **Manual Energy Metering** on
+the **Integrations** tab, and click the gear icon for the desired meter.
 
-The form on page 1 adds a new absolute meter reading. Date and time are
-pre-filled with the current time in the Home Assistant time zone, with seconds
-set to `00`; the meter-reading field remains empty. Use the localized decimal
-separator, but do not enter thousands separators. Readings can be inserted
-before, between, or after existing readings. Adding a value with an existing
-timestamp corrects that reading. Chronologically sorted readings must not
-decrease.
+The management page lets you add, edit, delete, and browse the complete reading
+history. Readings can also be added between two existing readings. The
+interpolations are then adjusted accordingly.
 
-The complete history is divided into reverse-chronological pages. Page 1
-contains only the ten latest readings together with the form for a new reading.
-Each following archive page contains up to 100 older readings. Within each
-page, the newest timestamp is shown first. Every row uses
-localized date, time, and number formatting and provides buttons to edit or
-delete that specific reading. The edit field deliberately omits thousands
-separators and also allows the timestamp to be changed; deletion requires
-confirmation.
+The actions `manual_energy_metering.add_reading` and
+`manual_energy_metering.delete_reading` are also available under
+**Developer tools > Actions** and can be used in automations. Deleting a
+reading requires its exact stored timestamp.
 
-After every addition, correction, or deletion, the integration compares the old
-and new neighboring interpolation segments. It updates only hourly statistic
-rows whose interpolated consumption or cumulative value actually changes and
-deletes only hours that are no longer covered. All other statistic rows remain
-unchanged. Inserting an intermediate reading therefore splits the previous
-interval into two new intervals. Deleting an intermediate reading causes the
-adjacent readings to be interpolated directly again.
+## Energy Dashboard
 
-Alternatively, the actions `manual_energy_metering.add_reading` and
-`manual_energy_metering.delete_reading` are available under
-**Developer tools > Actions**. They can also be used in automations. When
-deleting a reading, the timestamp must exactly match the stored reading time.
+After at least two readings, a statistic bearing the meter name appears. Its ID
+has the form `manual_energy_metering:<internal_meter_id>`. The exact ID is shown
+on the meter's management page and is also available in the sensor entity
+`statistic_id` attribute.
+
+Select this statistic under **Settings > Dashboards > Energy** as appropriate
+for grid consumption, gas consumption, or water consumption. For the
+retrospectively interpolated data, use the statistic with the
+`manual_energy_metering:` prefix instead of the `sensor.*` statistic that is
+automatically generated from the current sensor state.
+
+Between two readings, the difference is distributed proportionally to the
+actual elapsed time across hourly intervals. Partial hours receive the
+corresponding proportion of consumption. No consumption is extrapolated before
+the first or after the last reading.
+
+## Dashboard card
+
+The **Manual Energy Metering** dashboard card lets you enter a reading directly
+from a dashboard. Add it through **Edit dashboard > Add card > Manual Energy
+Metering** and select the meter entity.
+
+After installing or updating the integration, fully restart Home Assistant and
+reload the browser if the card is not shown in the card picker.
 
 ## Timestamps and entity history
 
@@ -215,23 +170,6 @@ It therefore shows when a reading was entered into Home Assistant. This does not
 mean that the actual reading time has been lost. Retrospective charts and the
 Energy Dashboard use the separate interpolated long-term statistic
 `manual_energy_metering:*`.
-
-## Energy Dashboard
-
-After at least two readings, a statistic bearing the meter name appears. Its ID
-has the form `manual_energy_metering:<internal_meter_id>`. The exact ID is also
-available in the sensor entity `statistic_id` attribute.
-
-Select this statistic under **Settings > Dashboards > Energy** as appropriate
-for grid consumption, gas consumption, or water consumption. For the
-retrospectively interpolated data, use the statistic with the
-`manual_energy_metering:` prefix instead of the `sensor.*` statistic that is
-automatically generated from the current sensor state.
-
-Between two readings, the difference is distributed proportionally to the
-actual elapsed time across UTC hourly intervals. Partial hours receive the
-corresponding proportion of consumption. No consumption is extrapolated before
-the first or after the last reading.
 
 ## Examples
 

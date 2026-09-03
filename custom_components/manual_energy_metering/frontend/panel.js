@@ -20,7 +20,8 @@ const TRANSLATIONS = {
     back: "Back",
     fallbackTitle: "Meter readings",
     description:
-      "Browse all readings by their actual reading date, not by when they were entered. Page 1 contains the ten latest readings and the form for adding a new one; each following archive page contains up to 100 older readings. Edit changes a reading in place; delete removes it. Only affected interpolated Energy Dashboard hours are updated.",
+      "Add, edit, delete, and browse this meter's readings. Readings can also be entered between two existing readings. After a reading is added, edited, or deleted, the interpolation is adjusted accordingly.",
+    energyStatistic: "Entity for the Energy Dashboard:",
     newReading: "Add a new meter reading",
     editReading: "Edit meter reading",
     dateTime: "Reading date and time",
@@ -65,7 +66,8 @@ const TRANSLATIONS = {
     back: "Zurück",
     fallbackTitle: "Zählerstände",
     description:
-      "Durchsuche alle Zählerstände nach ihrem tatsächlichen Ablesezeitpunkt, nicht nach dem Eingabezeitpunkt. Seite 1 enthält die zehn neuesten Werte und die Maske für einen neuen Eintrag; jede folgende Archivseite enthält bis zu 100 ältere Werte. Bearbeiten ändert einen Eintrag direkt; Löschen entfernt ihn. Dabei werden nur tatsächlich betroffene interpolierte Stundenwerte für das Energy Dashboard aktualisiert.",
+      "Hier kannst du die Zählerstände dieses Zählers eintragen, bearbeiten, löschen und ansehen. Zählerstände können auch zwischen zwei vorhandenen Zählerständen eingetragen werden. Nach dem Eintragen, Bearbeiten oder Löschen eines Zählerstands wird die Interpolation entsprechend angepasst.",
+    energyStatistic: "Entität für das Energy Dashboard:",
     newReading: "Neuen Zählerstand eintragen",
     editReading: "Zählerstand bearbeiten",
     dateTime: "Ablesedatum und Uhrzeit",
@@ -267,6 +269,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
               <span>${this._escape(title)}</span>${this._renderMeterTypeIcon()}
             </h1>
             <p>${this._escape(t.description)}</p>
+            ${this._renderStatisticId()}
           </div>
         </header>
 
@@ -742,6 +745,19 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return `<img class="meter-type-icon" src="${STATIC_URL}/icons/${filename}" alt="" aria-hidden="true" />`;
   }
 
+  _renderStatisticId() {
+    const statisticId = this._data?.statistic_id;
+    if (!statisticId) {
+      return "";
+    }
+    return `
+      <div class="statistic-reference">
+        <span>${this._escape(this._t.energyStatistic)}</span>
+        <code>${this._escape(statisticId)}</code>
+      </div>
+    `;
+  }
+
   _escape(value) {
     return String(value)
       .replaceAll("&", "&amp;")
@@ -824,6 +840,28 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         color: var(--secondary-text-color);
         line-height: 1.6;
         margin-bottom: 0;
+      }
+      .statistic-reference {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+        margin-top: 14px;
+        font: inherit;
+        line-height: 1.6;
+      }
+      .statistic-reference span {
+        color: var(--secondary-text-color);
+      }
+      .statistic-reference code {
+        max-width: 100%;
+        padding: 4px 7px;
+        border-radius: 7px;
+        color: var(--primary-text-color);
+        background: var(--secondary-background-color);
+        font: inherit;
+        overflow-wrap: anywhere;
+        user-select: all;
       }
       .entry-card, .readings-card {
         background: var(--card-background-color);

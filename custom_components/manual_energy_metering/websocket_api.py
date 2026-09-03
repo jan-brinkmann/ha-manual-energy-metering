@@ -14,6 +14,7 @@ from homeassistant.exceptions import Unauthorized
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 
 from .const import (
+    ATTR_STATISTIC_ID,
     ATTR_TIMESTAMP,
     ATTR_VALUE,
     CONF_CONFIG_ENTRY_ID,
@@ -70,6 +71,7 @@ def _meter_payload(
     return {
         "name": meter.name,
         CONF_METER_TYPE: meter.meter_type,
+        ATTR_STATISTIC_ID: meter.statistic_id,
         "unit": meter.unit,
         "reading_count": len(meter.readings),
         "page": page,

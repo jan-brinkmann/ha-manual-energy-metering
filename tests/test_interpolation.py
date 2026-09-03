@@ -391,6 +391,48 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertFalse((MODULE_DIR / "hacs.json").exists())
         self.assertEqual(german["title"], "Manuelle Energiemessung")
 
+    def test_documentation_is_concise_and_ordered(self) -> None:
+        root = MODULE_DIR.parents[1]
+        english = (root / "README.md").read_text()
+        german = (root / "README.de.md").read_text()
+
+        english_headings = [
+            line[3:] for line in english.splitlines() if line.startswith("## ")
+        ]
+        german_headings = [
+            line[3:] for line in german.splitlines() if line.startswith("## ")
+        ]
+        self.assertEqual(
+            english_headings[english_headings.index("Energy Dashboard") + 1],
+            "Dashboard card",
+        )
+        self.assertEqual(
+            english_headings[
+                english_headings.index("Timestamps and entity history") + 1
+            ],
+            "Examples",
+        )
+        self.assertEqual(
+            german_headings[german_headings.index("Energy Dashboard") + 1],
+            "Dashboard-Karte",
+        )
+        self.assertEqual(
+            german_headings[
+                german_headings.index("Zeitangaben und Entitätsverlauf") + 1
+            ],
+            "Beispiele",
+        )
+        dashboard_section = english.split("## Dashboard card", 1)[1].split(
+            "\n## ", 1
+        )[0]
+        self.assertNotIn("```yaml", dashboard_section)
+        self.assertNotIn("up to 100 older readings", english)
+        self.assertNotIn("bis zu 100 ältere", german)
+        self.assertNotIn("seconds set to `00`", english)
+        self.assertNotIn("Sekunden `00`", german)
+        self.assertNotIn("localized decimal separator", english)
+        self.assertNotIn("lokalisierte Dezimaltrennzeichen", german)
+
     def test_readings_panel_replaces_the_options_flow(self) -> None:
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
         init = (MODULE_DIR / "__init__.py").read_text()
@@ -405,9 +447,26 @@ class IntegrationIdentityTests(unittest.TestCase):
         websocket_api = (MODULE_DIR / "websocket_api.py").read_text()
         self.assertIn("paginate_readings", websocket_api)
         self.assertIn("CONF_METER_TYPE: meter.meter_type", websocket_api)
+        self.assertIn("ATTR_STATISTIC_ID: meter.statistic_id", websocket_api)
         self.assertIn("useGrouping: false", frontend)
         self.assertIn("_renderPagination", frontend)
         self.assertIn('dateTime: "Ablesedatum und Uhrzeit"', frontend)
+        self.assertNotIn("jede folgende Archivseite", frontend)
+        self.assertIn(
+            "Zählerstände können auch zwischen zwei vorhandenen Zählerständen "
+            "eingetragen werden.",
+            frontend,
+        )
+        self.assertIn(
+            "Nach dem Eintragen, Bearbeiten oder Löschen eines Zählerstands wird die "
+            "Interpolation entsprechend angepasst.",
+            frontend,
+        )
+        self.assertIn(
+            'energyStatistic: "Entität für das Energy Dashboard:"', frontend
+        )
+        self.assertIn('energyStatistic: "Entity for the Energy Dashboard:"', frontend)
+        self.assertIn("${this._renderStatisticId()}", frontend)
         self.assertIn("_renderMeterTypeIcon", frontend)
         self.assertIn("mdi:arrow-left", frontend)
         self.assertIn("window.history.back()", frontend)

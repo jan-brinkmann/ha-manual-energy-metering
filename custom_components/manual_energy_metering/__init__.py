@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 from typing import Any
 
 import voluptuous as vol
@@ -16,6 +17,10 @@ from .const import (
     ATTR_TIMESTAMP,
     ATTR_VALUE,
     CONF_CONFIG_ENTRY_ID,
+    CONF_VISION_MODEL,
+    CONF_VISION_PROMPT,
+    DEFAULT_VISION_MODEL,
+    DEFAULT_VISION_PROMPT,
     DOMAIN,
     PLATFORMS,
     SERVICE_ADD_READING,
@@ -24,6 +29,14 @@ from .const import (
 from .meter import ManualEnergyMetering, ReadingError
 from .panel import async_register_readings_panel
 from .websocket_api import async_register_websocket_commands
+
+_LEGACY_METER_DISPLAY_UNIT = "meter_display_unit"
+_LEGACY_DEFAULT_PROMPT_HASHES = frozenset(
+    {
+        "bb39dbcf5946bbb3aa9955026663c6c0dbd14293df8c4a3d88a6dc1b95739373",
+        "d66ced6b8197c2ddcb6f8260ac39128ea78116b55b2fc998cc523aa69ea48253",
+    }
+)
 
 ADD_READING_SCHEMA = vol.Schema(
     {
@@ -112,6 +125,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = meter
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Add independent vision defaults to existing meter entries."""
+    if entry.version > 5:
+        return False
+
+    data = dict(entry.data)
+    model = data.get(CONF_VISION_MODEL)
+    if not isinstance(model, str) or not model.strip():
+        data[CONF_VISION_MODEL] = DEFAULT_VISION_MODEL
+    prompt = data.get(CONF_VISION_PROMPT)
+    if (
+        not isinstance(prompt, str)
+        or not prompt.strip()
+        or sha256(prompt.encode()).hexdigest() in _LEGACY_DEFAULT_PROMPT_HASHES
+    ):
+        data[CONF_VISION_PROMPT] = DEFAULT_VISION_PROMPT
+    data.pop(_LEGACY_METER_DISPLAY_UNIT, None)
+
+    if entry.version < 5 or data != dict(entry.data):
+        hass.config_entries.async_update_entry(entry, data=data, version=5)
     return True
 
 

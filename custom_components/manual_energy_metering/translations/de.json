@@ -15,7 +15,35 @@
         "data": {
           "unit": "Einheit"
         }
+      },
+      "vision": {
+        "title": "Fotoerkennung konfigurieren",
+        "description": "Konfiguriere einen OpenAI-kompatiblen Vision-Provider für diesen Zähler. Lasse die Provider-Adresse leer, um die Fotoerkennung zu deaktivieren. Modell und Prompt werden unabhängig für diesen Zähler gespeichert.",
+        "data": {
+          "vision_api_url": "Provider-Adresse",
+          "vision_api_token": "API-Token (optional)",
+          "vision_model": "Modell",
+          "vision_prompt": "Prompt"
+        }
+      },
+      "reconfigure": {
+        "title": "Fotoerkennung konfigurieren",
+        "description": "Änderungen gelten nur für diesen Zähler. Lasse das API-Token leer, um das gespeicherte Token beizubehalten, oder wähle Gespeichertes API-Token entfernen, um es zu löschen.",
+        "data": {
+          "vision_api_url": "Provider-Adresse",
+          "vision_api_token": "API-Token (optional)",
+          "vision_model": "Modell",
+          "vision_prompt": "Prompt",
+          "clear_vision_api_token": "Gespeichertes API-Token entfernen"
+        }
       }
+    },
+    "error": {
+      "invalid_url": "Gib eine gültige HTTP- oder HTTPS-Provider-Adresse ein.",
+      "required": "Dieses Feld ist erforderlich."
+    },
+    "abort": {
+      "reconfigure_successful": "Die Einstellungen der Fotoerkennung wurden aktualisiert."
     }
   },
   "exceptions": {

@@ -143,6 +143,46 @@ The **Manual Energy Metering** dashboard card lets you enter a reading directly
 from a dashboard. Add it through **Edit dashboard > Add card > Manual Energy
 Metering** and select the meter entity.
 
+The card editor can show or hide the photo buttons independently of the other
+card content and independently of whether a provider is configured.
+
+### Photo recognition
+
+Photo recognition is configured independently for each meter. During meter
+creation, or later through the meter entry's three-dot menu under **Settings >
+Devices & services > Manual Energy Metering > Reconfigure**, enter:
+
+- **Provider address**: an OpenAI-compatible base URL or complete Chat
+  Completions endpoint. For Ollama, use for example
+  `http://192.168.1.10:11434`; the integration then calls
+  `/v1/chat/completions`. The address must be reachable from the Home Assistant
+  host or container. `localhost` refers to Home Assistant itself.
+- **API token**: an optional bearer token that is sent only by the Home
+  Assistant backend.
+- **Model**: the vision model installed at the provider. Every existing and
+  new meter receives `qwen2.5vl:7b` as its own default, which can be changed
+  without affecting other meters.
+- **Prompt**: every existing and new meter receives its own copy of the built-in
+  standard prompt. It can be changed later for that meter without affecting any
+  other meter.
+
+The provider address may be left empty when photo recognition is not needed.
+Existing manual functions continue to work without a provider.
+
+Select **Take photo** to request the rear camera on a mobile device, or **Upload
+photo** to select an existing image. The card re-encodes the image as JPEG,
+limits its longest edge to 1600 pixels and its size to 2 MB, and sends it to the
+configured provider. The integration does not retain the photograph. Apart from
+the meter's configured prompt, the provider receives only the photograph; stored
+readings, timestamps, meter type, and units are not sent as recognition context.
+The provider may apply its own storage and privacy policy.
+
+After recognition, the card displays the photograph, fills in the recognized
+meter reading, and prefills the editable reading time with the current time. The
+reading time is neither sent to nor checked by the provider. Confirm or correct
+the value and select **Add reading** to process the record. Recognition alone
+never stores a meter reading.
+
 After installing or updating the integration, fully restart Home Assistant and
 reload the browser if the card is not shown in the card picker.
 

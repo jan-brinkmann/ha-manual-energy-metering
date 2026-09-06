@@ -151,6 +151,50 @@ Mit der Dashboard-Karte **Manuelle Energiemessung** kannst du einen Zählerstand
 direkt im Dashboard eintragen. Füge sie über **Dashboard bearbeiten > Karte
 hinzufügen > Manuelle Energiemessung** hinzu und wähle die Zählerentität.
 
+Im Karteneditor können die Foto-Schaltflächen unabhängig vom übrigen
+Karteninhalt und unabhängig von einer Provider-Konfiguration ein- oder
+ausgeblendet werden.
+
+### Fotoerkennung
+
+Die Fotoerkennung wird für jeden Zähler unabhängig konfiguriert. Trage beim
+Anlegen des Zählers oder später über das Drei-Punkte-Menü seines Eintrags unter
+**Einstellungen > Geräte & Dienste > Manuelle Energiemessung > Neu
+konfigurieren** Folgendes ein:
+
+- **Provider-Adresse**: eine OpenAI-kompatible Basis-URL oder ein vollständiger
+  Chat-Completions-Endpunkt. Verwende für Ollama zum Beispiel
+  `http://192.168.1.10:11434`; die Integration ruft dann
+  `/v1/chat/completions` auf. Die Adresse muss vom Home-Assistant-Host oder
+  -Container erreichbar sein. `localhost` bezeichnet Home Assistant selbst.
+- **API-Token**: optionaler Bearer-Token, den ausschließlich das
+  Home-Assistant-Backend sendet.
+- **Modell**: das beim Provider installierte Vision-Modell. Jeder vorhandene
+  und neue Zähler erhält `qwen2.5vl:7b` als eigenen Standardwert, der ohne
+  Auswirkungen auf andere Zähler geändert werden kann.
+- **Prompt**: Jeder vorhandene und neue Zähler erhält eine eigene Kopie des
+  eingebauten Standardprompts. Sie kann später für diesen Zähler geändert
+  werden, ohne andere Zähler zu beeinflussen.
+
+Die Provider-Adresse kann leer bleiben, wenn die Fotoerkennung nicht benötigt
+wird. Die vorhandenen manuellen Funktionen arbeiten auch ohne Provider weiter.
+
+Wähle **Foto aufnehmen**, um auf einem Mobilgerät die rückseitige Kamera
+anzufordern, oder **Foto hochladen**, um ein vorhandenes Bild auszuwählen. Die
+Karte kodiert das Bild als JPEG neu, begrenzt seine längste Kante auf 1600 Pixel
+sowie seine Größe auf 2 MB und sendet es an den konfigurierten Provider. Die
+Integration speichert das Foto nicht dauerhaft. Abgesehen vom für diesen Zähler
+konfigurierten Prompt erhält der Provider nur das Foto; gespeicherte
+Zählerstände, Zeitstempel, Zählertyp und Einheiten werden nicht als
+Erkennungskontext gesendet. Für den Provider können eigene Speicher- und
+Datenschutzregeln gelten.
+
+Nach der Erkennung zeigt die Karte das Foto an, füllt den erkannten Zählerstand
+ein und belegt den editierbaren Ablesezeitpunkt mit der aktuellen Zeit vor. Der
+Ablesezeitpunkt wird weder an den Provider gesendet noch von ihm geprüft.
+Bestätige oder korrigiere den Wert und wähle **Zählerstand eintragen**, um den
+Datensatz zu verarbeiten. Die Erkennung allein speichert keinen Zählerstand.
+
 Starte Home Assistant nach Installation oder Aktualisierung vollständig neu und
 lade den Browser neu, falls die Karte nicht in der Kartenauswahl erscheint.
 

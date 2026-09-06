@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import binascii
 import json
 import math
 import re
@@ -17,7 +16,7 @@ if TYPE_CHECKING:
     from .meter import ManualEnergyMetering
 
 ALLOWED_IMAGE_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
-MAX_VISION_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_VISION_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024
 PROVIDER_TIMEOUT_SECONDS = 90
 _NUMBER_PATTERN = re.compile(r"^[+]?(?:\d+(?:\.\d*)?|\.\d+)$")
@@ -66,18 +65,29 @@ def chat_completions_url(api_url: str) -> str:
     return f"{normalized}/v1/chat/completions"
 
 
-def validate_image(image_base64: str, mime_type: str) -> None:
+def validate_image(image: bytes, mime_type: str) -> None:
     """Reject unsupported, malformed, empty, or oversized image data."""
     if mime_type not in ALLOWED_IMAGE_TYPES:
         raise VisionError("vision_invalid_image", "Unsupported image format.")
-    try:
-        decoded = base64.b64decode(image_base64, validate=True)
-    except (binascii.Error, ValueError) as err:
-        raise VisionError("vision_invalid_image", "Invalid image data.") from err
-    if not decoded:
+    if not image:
         raise VisionError("vision_invalid_image", "The image is empty.")
-    if len(decoded) > MAX_VISION_IMAGE_BYTES:
+    if len(image) > MAX_VISION_IMAGE_BYTES:
         raise VisionError("vision_image_too_large", "The image is too large.")
+
+    has_signature = (
+        mime_type == "image/jpeg"
+        and image.startswith(b"\xff\xd8\xff")
+        or mime_type == "image/png"
+        and image.startswith(b"\x89PNG\r\n\x1a\n")
+        or mime_type == "image/webp"
+        and len(image) >= 12
+        and image.startswith(b"RIFF")
+        and image[8:12] == b"WEBP"
+    )
+    if not has_signature:
+        raise VisionError(
+            "vision_invalid_image", "The image content does not match its format."
+        )
 
 
 def _response_text(response: Any) -> str:
@@ -184,10 +194,10 @@ def recognition_request(
 async def async_recognize_meter(
     hass: HomeAssistant,
     meter: ManualEnergyMetering,
-    image_base64: str,
+    image: bytes,
     mime_type: str,
 ) -> dict[str, Any]:
-    """Send a meter image to this meter's configured provider."""
+    """Send the original meter image bytes to this meter's provider."""
     import aiohttp
 
     from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -201,7 +211,7 @@ async def async_recognize_meter(
         DEFAULT_VISION_PROMPT,
     )
 
-    validate_image(image_base64, mime_type)
+    validate_image(image, mime_type)
     data = meter.entry.data
     api_url = str(data.get(CONF_VISION_API_URL, "")).strip()
     model = str(data.get(CONF_VISION_MODEL, DEFAULT_VISION_MODEL)).strip()
@@ -216,6 +226,7 @@ async def async_recognize_meter(
     token = str(data.get(CONF_VISION_API_TOKEN, "")).strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    image_base64 = base64.b64encode(image).decode("ascii")
     payload = recognition_request(model, prompt, image_base64, mime_type)
 
     session = async_get_clientsession(hass)

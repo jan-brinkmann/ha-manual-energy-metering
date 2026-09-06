@@ -23,21 +23,13 @@ from .const import (
 )
 from .interpolation import paginate_readings
 from .meter import ManualEnergyMetering, ReadingError
-from .vision import (
-    ALLOWED_IMAGE_TYPES,
-    MAX_VISION_IMAGE_BYTES,
-    VisionError,
-    async_recognize_meter,
-)
 
 WS_LIST_READINGS = f"{DOMAIN}/readings/list"
 WS_ADD_READING = f"{DOMAIN}/readings/add"
 WS_UPDATE_READING = f"{DOMAIN}/readings/update"
 WS_DELETE_READING = f"{DOMAIN}/readings/delete"
 WS_CARD_ADD_READING = f"{DOMAIN}/card/add"
-WS_CARD_RECOGNIZE = f"{DOMAIN}/card/recognize"
 PAGE_SCHEMA = vol.All(vol.Coerce(int), vol.Range(min=1))
-MAX_IMAGE_BASE64_LENGTH = ((MAX_VISION_IMAGE_BYTES + 2) // 3) * 4
 
 
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
@@ -47,7 +39,6 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_update_reading)
     websocket_api.async_register_command(hass, websocket_delete_reading)
     websocket_api.async_register_command(hass, websocket_card_add_reading)
-    websocket_api.async_register_command(hass, websocket_card_recognize)
 
 
 def _meter_for_message(
@@ -289,35 +280,3 @@ async def websocket_card_add_reading(
         _send_reading_error(connection, msg, err)
         return
     connection.send_result(msg["id"], _card_payload(meter))
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): WS_CARD_RECOGNIZE,
-        vol.Required("entity_id"): cv.entity_id,
-        vol.Required("image"): vol.All(
-            str, vol.Length(min=1, max=MAX_IMAGE_BASE64_LENGTH)
-        ),
-        vol.Required("mime_type"): vol.In(ALLOWED_IMAGE_TYPES),
-    }
-)
-@websocket_api.async_response
-async def websocket_card_recognize(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Recognize a meter value without persisting a reading."""
-    if (meter := _meter_for_entity(hass, connection, msg)) is None:
-        return
-    try:
-        result = await async_recognize_meter(
-            hass,
-            meter,
-            msg["image"],
-            msg["mime_type"],
-        )
-    except VisionError as err:
-        connection.send_error(msg["id"], err.code, str(err))
-        return
-    connection.send_result(msg["id"], result)

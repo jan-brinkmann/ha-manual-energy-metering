@@ -165,14 +165,16 @@ Devices & services > Manual Energy Metering > Reconfigure**, enter:
 - **Prompt**: every existing and new meter receives its own copy of the built-in
   standard prompt. It can be changed later for that meter without affecting any
   other meter.
+- **Compress image before recognition**: enabled by default and configurable
+  independently for each meter.
 
 The provider address may be left empty when photo recognition is not needed.
 Existing manual functions continue to work without a provider.
 
 Select **Take photo** to request the rear camera on a mobile device, or **Upload
-photo** to select an existing image. The card re-encodes the image as JPEG,
-limits its longest edge to 1600 pixels and its size to 2 MB, and sends it to the
-configured provider. The integration does not retain the photograph. Apart from
+photo** to select an existing image. The image is processed according to the
+per-meter compression setting described directly in the configuration dialog.
+The integration does not retain the photograph. Apart from
 the meter's configured prompt, the provider receives only the photograph; stored
 readings, timestamps, meter type, and units are not sent as recognition context.
 The provider may apply its own storage and privacy policy.

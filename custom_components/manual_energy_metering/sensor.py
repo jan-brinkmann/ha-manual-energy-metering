@@ -26,7 +26,9 @@ from .const import (
     ATTR_VISION_CONFIGURED,
     CONF_METER_TYPE,
     CONF_VISION_API_URL,
+    CONF_VISION_COMPRESS_IMAGE,
     CONF_VISION_MODEL,
+    DEFAULT_VISION_COMPRESS_IMAGE,
     DOMAIN,
     MAX_RECENT_READINGS,
     METER_TYPE_WATER,
@@ -98,6 +100,9 @@ class ManualEnergyMeteringSensor(SensorEntity):
                 and str(
                     self._meter.entry.data.get(CONF_VISION_MODEL, "")
                 ).strip()
+            ),
+            CONF_VISION_COMPRESS_IMAGE: self._meter.entry.data.get(
+                CONF_VISION_COMPRESS_IMAGE, DEFAULT_VISION_COMPRESS_IMAGE
             ),
         }
 

@@ -23,7 +23,11 @@
           "vision_api_url": "Provider address",
           "vision_api_token": "API token (optional)",
           "vision_model": "Model",
-          "vision_prompt": "Prompt"
+          "vision_prompt": "Prompt",
+          "vision_compress_image": "Compress image before recognition"
+        },
+        "data_description": {
+          "vision_compress_image": "Enabled: converts the photo to JPEG, limits its longest edge to 1600 pixels and its output size to 2 MiB, and removes embedded metadata. Disabled: sends an original JPEG, PNG, or WebP file unchanged up to 20 MiB, including embedded metadata. Enabled by default."
         }
       },
       "reconfigure": {
@@ -34,7 +38,11 @@
           "vision_api_token": "API token (optional)",
           "vision_model": "Model",
           "vision_prompt": "Prompt",
+          "vision_compress_image": "Compress image before recognition",
           "clear_vision_api_token": "Remove stored API token"
+        },
+        "data_description": {
+          "vision_compress_image": "Enabled: converts the photo to JPEG, limits its longest edge to 1600 pixels and its output size to 2 MiB, and removes embedded metadata. Disabled: sends an original JPEG, PNG, or WebP file unchanged up to 20 MiB, including embedded metadata. Enabled by default."
         }
       }
     },

@@ -14,10 +14,12 @@ CONF_UNIT = "unit"
 CONF_CONFIG_ENTRY_ID = "config_entry_id"
 CONF_VISION_API_URL = "vision_api_url"
 CONF_VISION_API_TOKEN = "vision_api_token"
+CONF_VISION_COMPRESS_IMAGE = "vision_compress_image"
 CONF_VISION_MODEL = "vision_model"
 CONF_VISION_PROMPT = "vision_prompt"
 CONF_CLEAR_VISION_API_TOKEN = "clear_vision_api_token"
 
+DEFAULT_VISION_COMPRESS_IMAGE = True
 DEFAULT_VISION_MODEL = "qwen2.5vl:7b"
 DEFAULT_VISION_PROMPT = (
     "Read the complete cumulative meter value shown in this image. Return only "

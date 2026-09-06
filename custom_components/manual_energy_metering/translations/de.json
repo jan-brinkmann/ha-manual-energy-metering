@@ -23,7 +23,11 @@
           "vision_api_url": "Provider-Adresse",
           "vision_api_token": "API-Token (optional)",
           "vision_model": "Modell",
-          "vision_prompt": "Prompt"
+          "vision_prompt": "Prompt",
+          "vision_compress_image": "Bild vor der Erkennung komprimieren"
+        },
+        "data_description": {
+          "vision_compress_image": "Aktiviert: Konvertiert das Foto in JPEG, begrenzt die längste Kante auf 1600 Pixel und die Ausgabegröße auf 2 MiB und entfernt eingebettete Metadaten. Deaktiviert: Sendet eine JPEG-, PNG- oder WebP-Originaldatei bis 20 MiB unverändert einschließlich eingebetteter Metadaten. Standardmäßig aktiviert."
         }
       },
       "reconfigure": {
@@ -34,7 +38,11 @@
           "vision_api_token": "API-Token (optional)",
           "vision_model": "Modell",
           "vision_prompt": "Prompt",
+          "vision_compress_image": "Bild vor der Erkennung komprimieren",
           "clear_vision_api_token": "Gespeichertes API-Token entfernen"
+        },
+        "data_description": {
+          "vision_compress_image": "Aktiviert: Konvertiert das Foto in JPEG, begrenzt die längste Kante auf 1600 Pixel und die Ausgabegröße auf 2 MiB und entfernt eingebettete Metadaten. Deaktiviert: Sendet eine JPEG-, PNG- oder WebP-Originaldatei bis 20 MiB unverändert einschließlich eingebetteter Metadaten. Standardmäßig aktiviert."
         }
       }
     },

@@ -457,17 +457,19 @@ class VisionProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(VisionError, "not numeric"):
             recognized_value(ambiguous)
 
-    def test_image_validation_enforces_type_encoding_and_size(self) -> None:
-        import base64
-
-        validate_image(base64.b64encode(b"jpeg").decode(), "image/jpeg")
+    def test_image_validation_enforces_type_content_and_size(self) -> None:
+        validate_image(b"\xff\xd8\xffjpeg", "image/jpeg")
+        validate_image(b"\x89PNG\r\n\x1a\npng", "image/png")
+        validate_image(b"RIFF\x04\x00\x00\x00WEBP", "image/webp")
         with self.assertRaisesRegex(VisionError, "Unsupported"):
-            validate_image("YWJj", "image/gif")
-        with self.assertRaisesRegex(VisionError, "Invalid image"):
-            validate_image("not-base64", "image/jpeg")
+            validate_image(b"abc", "image/gif")
+        with self.assertRaisesRegex(VisionError, "empty"):
+            validate_image(b"", "image/jpeg")
+        with self.assertRaisesRegex(VisionError, "does not match"):
+            validate_image(b"not-a-jpeg", "image/jpeg")
         with self.assertRaisesRegex(VisionError, "too large"):
             validate_image(
-                base64.b64encode(b"x" * (MAX_VISION_IMAGE_BYTES + 1)).decode(),
+                b"\xff\xd8\xff" + b"x" * MAX_VISION_IMAGE_BYTES,
                 "image/jpeg",
             )
 
@@ -543,6 +545,10 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertNotIn("Sekunden `00`", german)
         self.assertNotIn("localized decimal separator", english)
         self.assertNotIn("lokalisierte Dezimaltrennzeichen", german)
+        self.assertNotIn("1600 pixels", english)
+        self.assertNotIn("20 MiB", english)
+        self.assertNotIn("1600 Pixel", german)
+        self.assertNotIn("20 MiB", german)
 
     def test_readings_panel_replaces_the_options_flow(self) -> None:
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
@@ -655,18 +661,29 @@ class IntegrationIdentityTests(unittest.TestCase):
         init = (MODULE_DIR / "__init__.py").read_text()
         sensor = (MODULE_DIR / "sensor.py").read_text()
         websocket_api = (MODULE_DIR / "websocket_api.py").read_text()
+        vision_http = (MODULE_DIR / "vision_http.py").read_text()
         vision = (MODULE_DIR / "vision.py").read_text()
         card = (MODULE_DIR / "frontend" / "card.js").read_text()
+        english_strings = json.loads((MODULE_DIR / "strings.json").read_text())
+        german_strings = json.loads(
+            (MODULE_DIR / "translations" / "de.json").read_text()
+        )
 
         self.assertIn('DEFAULT_VISION_MODEL = "qwen2.5vl:7b"', constants)
+        self.assertIn("DEFAULT_VISION_COMPRESS_IMAGE = True", constants)
         self.assertIn("DEFAULT_VISION_PROMPT", constants)
         self.assertNotIn("DATA_VISION_CONFIG", constants)
-        self.assertIn("VERSION = 5", config_flow)
+        self.assertIn("VERSION = 6", config_flow)
         self.assertIn("async_step_vision", config_flow)
         self.assertIn("async_step_reconfigure", config_flow)
         self.assertIn("TextSelectorType.PASSWORD", config_flow)
+        self.assertIn("CONF_VISION_COMPRESS_IMAGE", config_flow)
         self.assertIn("data_updates={**entry.data, **vision_data}", config_flow)
         self.assertIn("async_migrate_entry", init)
+        self.assertIn(
+            "data[CONF_VISION_COMPRESS_IMAGE] = DEFAULT_VISION_COMPRESS_IMAGE",
+            init,
+        )
         self.assertIn("data[CONF_VISION_MODEL] = DEFAULT_VISION_MODEL", init)
         self.assertIn("data[CONF_VISION_PROMPT] = DEFAULT_VISION_PROMPT", init)
         self.assertNotIn("VisionConfigStore", init)
@@ -675,15 +692,36 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertNotIn("meter_type", vision)
         self.assertIn('ATTR_VISION_CONFIGURED = "vision_configured"', constants)
         self.assertIn("ATTR_VISION_CONFIGURED", sensor)
-        self.assertIn("WS_CARD_RECOGNIZE", websocket_api)
+        self.assertIn("CONF_VISION_COMPRESS_IMAGE", sensor)
+        self.assertNotIn("WS_CARD_RECOGNIZE", websocket_api)
         self.assertIn("permissions.check_entity", websocket_api)
+        self.assertIn("permissions.check_entity", vision_http)
+        self.assertIn("request.content.iter_chunked", vision_http)
+        self.assertIn('request.headers.get("Content-Encoding"', vision_http)
+        self.assertIn("bytes(image)", vision_http)
+        self.assertIn("hass.http.register_view(VisionRecognitionView)", init)
         self.assertIn('capture="environment"', card)
         self.assertIn('icon="mdi:image-plus"', card)
         self.assertIn("canvas.toBlob", card)
-        self.assertIn('type: `${DOMAIN}/card/recognize`', card)
+        self.assertIn("if (compressImage)", card)
+        self.assertIn("attributes.vision_compress_image !== false", card)
+        self.assertIn("file: uploadFile", card)
+        self.assertIn("body: prepared.file", card)
+        self.assertIn("this._hass.fetchWithAuth", card)
         self.assertIn("this._formValue = this._formatInputReading", card)
         self.assertIn("this._formTimestamp = timestamp", card)
         self.assertNotIn("async_add_reading", vision)
+        for step_id in ("vision", "reconfigure"):
+            english_help = english_strings["config"]["step"][step_id][
+                "data_description"
+            ]["vision_compress_image"]
+            german_help = german_strings["config"]["step"][step_id][
+                "data_description"
+            ]["vision_compress_image"]
+            self.assertIn("1600", english_help)
+            self.assertIn("20 MiB", english_help)
+            self.assertIn("1600", german_help)
+            self.assertIn("20 MiB", german_help)
 
 
 if __name__ == "__main__":

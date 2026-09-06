@@ -175,15 +175,17 @@ konfigurieren** Folgendes ein:
 - **Prompt**: Jeder vorhandene und neue Zähler erhält eine eigene Kopie des
   eingebauten Standardprompts. Sie kann später für diesen Zähler geändert
   werden, ohne andere Zähler zu beeinflussen.
+- **Bild vor der Erkennung komprimieren**: ist standardmäßig aktiviert und
+  kann für jeden Zähler unabhängig konfiguriert werden.
 
 Die Provider-Adresse kann leer bleiben, wenn die Fotoerkennung nicht benötigt
 wird. Die vorhandenen manuellen Funktionen arbeiten auch ohne Provider weiter.
 
 Wähle **Foto aufnehmen**, um auf einem Mobilgerät die rückseitige Kamera
-anzufordern, oder **Foto hochladen**, um ein vorhandenes Bild auszuwählen. Die
-Karte kodiert das Bild als JPEG neu, begrenzt seine längste Kante auf 1600 Pixel
-sowie seine Größe auf 2 MB und sendet es an den konfigurierten Provider. Die
-Integration speichert das Foto nicht dauerhaft. Abgesehen vom für diesen Zähler
+anzufordern, oder **Foto hochladen**, um ein vorhandenes Bild auszuwählen. Das
+Bild wird entsprechend der direkt im Konfigurationsdialog beschriebenen
+Komprimierungseinstellung des Zählers verarbeitet. Die Integration speichert
+das Foto nicht dauerhaft. Abgesehen vom für diesen Zähler
 konfigurierten Prompt erhält der Provider nur das Foto; gespeicherte
 Zählerstände, Zeitstempel, Zählertyp und Einheiten werden nicht als
 Erkennungskontext gesendet. Für den Provider können eigene Speicher- und

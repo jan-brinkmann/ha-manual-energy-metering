@@ -25,8 +25,10 @@ from .const import (
     CONF_UNIT,
     CONF_VISION_API_TOKEN,
     CONF_VISION_API_URL,
+    CONF_VISION_COMPRESS_IMAGE,
     CONF_VISION_MODEL,
     CONF_VISION_PROMPT,
+    DEFAULT_VISION_COMPRESS_IMAGE,
     DEFAULT_VISION_MODEL,
     DEFAULT_VISION_PROMPT,
     DOMAIN,
@@ -64,13 +66,19 @@ def _vision_schema(
             CONF_VISION_PROMPT,
             default=defaults.get(CONF_VISION_PROMPT, DEFAULT_VISION_PROMPT),
         ): TextSelector(TextSelectorConfig(multiline=True)),
+        vol.Optional(
+            CONF_VISION_COMPRESS_IMAGE,
+            default=defaults.get(
+                CONF_VISION_COMPRESS_IMAGE, DEFAULT_VISION_COMPRESS_IMAGE
+            ),
+        ): bool,
     }
     if reconfigure:
         fields[vol.Optional(CONF_CLEAR_VISION_API_TOKEN, default=False)] = bool
     return vol.Schema(fields)
 
 
-def _normalize_vision_input(user_input: dict[str, Any]) -> dict[str, str]:
+def _normalize_vision_input(user_input: dict[str, Any]) -> dict[str, Any]:
     """Normalize the optional provider settings."""
     return {
         CONF_VISION_API_URL: normalize_vision_url(
@@ -85,10 +93,15 @@ def _normalize_vision_input(user_input: dict[str, Any]) -> dict[str, str]:
         CONF_VISION_PROMPT: user_input.get(
             CONF_VISION_PROMPT, DEFAULT_VISION_PROMPT
         ).strip(),
+        CONF_VISION_COMPRESS_IMAGE: bool(
+            user_input.get(
+                CONF_VISION_COMPRESS_IMAGE, DEFAULT_VISION_COMPRESS_IMAGE
+            )
+        ),
     }
 
 
-def _vision_input_errors(data: dict[str, str]) -> dict[str, str]:
+def _vision_input_errors(data: dict[str, Any]) -> dict[str, str]:
     """Validate a disabled or complete per-meter provider configuration."""
     errors: dict[str, str] = {}
     api_url = data[CONF_VISION_API_URL]
@@ -108,7 +121,7 @@ def _vision_input_errors(data: dict[str, str]) -> dict[str, str]:
 class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a Manual Energy Metering config flow."""
 
-    VERSION = 5
+    VERSION = 6
 
     def __init__(self) -> None:
         """Initialize the flow."""
@@ -176,6 +189,7 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self._async_create_meter()
 
         defaults = {
+            CONF_VISION_COMPRESS_IMAGE: DEFAULT_VISION_COMPRESS_IMAGE,
             CONF_VISION_MODEL: DEFAULT_VISION_MODEL,
             CONF_VISION_PROMPT: DEFAULT_VISION_PROMPT,
         }
@@ -211,6 +225,9 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
 
         defaults = dict(entry.data)
+        defaults.setdefault(
+            CONF_VISION_COMPRESS_IMAGE, DEFAULT_VISION_COMPRESS_IMAGE
+        )
         defaults.setdefault(CONF_VISION_MODEL, DEFAULT_VISION_MODEL)
         defaults.setdefault(CONF_VISION_PROMPT, DEFAULT_VISION_PROMPT)
         if user_input is not None:

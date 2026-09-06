@@ -3,8 +3,9 @@ const STATIC_URL = `/${DOMAIN}_static`;
 const CARD_TAG = "manual-energy-metering-card";
 const EDITOR_TAG = "manual-energy-metering-card-editor";
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
-const MAX_UPLOAD_IMAGE_BYTES = 2 * 1024 * 1024;
+const MAX_COMPRESSED_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION = 1600;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const METER_ICONS = {
   electricity: "electricity.png",
@@ -72,7 +73,7 @@ const TRANSLATIONS = {
         "Configure photo recognition for this meter before using it.",
       vision_invalid_url: "The configured vision provider address is invalid.",
       vision_invalid_image: "The image is invalid or unsupported.",
-      vision_image_too_large: "The prepared image is too large.",
+      vision_image_too_large: "The original image is too large.",
       vision_provider_error: "The vision provider rejected the request.",
       vision_provider_unavailable: "The vision provider is unavailable.",
       vision_invalid_response:
@@ -138,7 +139,7 @@ const TRANSLATIONS = {
       vision_invalid_url:
         "Die konfigurierte Adresse des Vision-Providers ist ungültig.",
       vision_invalid_image: "Das Bild ist ungültig oder wird nicht unterstützt.",
-      vision_image_too_large: "Das vorbereitete Bild ist zu groß.",
+      vision_image_too_large: "Das Originalbild ist zu groß.",
       vision_provider_error: "Der Vision-Provider hat die Anfrage abgelehnt.",
       vision_provider_unavailable: "Der Vision-Provider ist nicht erreichbar.",
       vision_invalid_response:
@@ -375,6 +376,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
         this._t.fallbackName,
       meterType: attributes.meter_type,
       visionConfigured: Boolean(attributes.vision_configured),
+      compressImage: attributes.vision_compress_image !== false,
       unit: result.unit ?? attributes.unit_of_measurement ?? "",
       lastReading:
         result.last_reading !== undefined
@@ -652,13 +654,32 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._message = { text: this._t.recognizing, type: "info" };
     this._render();
     try {
-      const prepared = await this._prepareImage(file);
-      const result = await this._hass.callWS({
-        type: `${DOMAIN}/card/recognize`,
-        entity_id: entityId,
-        image: prepared.base64,
-        mime_type: prepared.mimeType,
-      });
+      const prepared = await this._prepareImage(
+        file,
+        this._stateData().compressImage
+      );
+      const response = await this._hass.fetchWithAuth(
+        `/api/${DOMAIN}/recognize/${encodeURIComponent(entityId)}`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": prepared.mimeType,
+          },
+          body: prepared.file,
+        }
+      );
+      let result;
+      try {
+        result = await response.json();
+      } catch (_error) {
+        throw new Error(this._t.genericError);
+      }
+      if (!response.ok) {
+        const error = new Error(result?.message || this._t.genericError);
+        error.code = result?.code;
+        throw error;
+      }
       if (this._config.entity !== entityId) {
         return;
       }
@@ -680,74 +701,84 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
-  async _prepareImage(file) {
-    if (!file.type.startsWith("image/")) {
+  async _prepareImage(file, compressImage) {
+    const sourceMimeType = file.type.toLowerCase();
+    if (!sourceMimeType.startsWith("image/") || !file.size) {
       throw new Error(this._t.invalidImage);
     }
     if (file.size > MAX_SOURCE_IMAGE_BYTES) {
       throw new Error(this._t.imageTooLarge);
     }
 
-    const objectUrl = URL.createObjectURL(file);
-    const image = new Image();
-    try {
-      await new Promise((resolve, reject) => {
-        image.onload = resolve;
-        image.onerror = reject;
-        image.src = objectUrl;
-      });
-    } catch (_error) {
-      throw new Error(this._t.imageProcessingFailed);
-    } finally {
-      URL.revokeObjectURL(objectUrl);
-    }
-    if (!image.naturalWidth || !image.naturalHeight) {
-      throw new Error(this._t.imageProcessingFailed);
-    }
-
-    const scale = Math.min(
-      1,
-      MAX_IMAGE_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight)
-    );
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const context = canvas.getContext("2d");
-    if (!context) {
-      throw new Error(this._t.imageProcessingFailed);
-    }
-    context.fillStyle = "#fff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-    let blob;
-    for (const quality of [0.86, 0.72, 0.58, 0.44]) {
-      blob = await new Promise((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", quality)
-      );
-      if (!blob || blob.size <= MAX_UPLOAD_IMAGE_BYTES) {
-        break;
+    let uploadFile = file;
+    let mimeType = sourceMimeType;
+    if (compressImage) {
+      const objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+      try {
+        await new Promise((resolve, reject) => {
+          image.onload = resolve;
+          image.onerror = reject;
+          image.src = objectUrl;
+        });
+      } catch (_error) {
+        throw new Error(this._t.imageProcessingFailed);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
       }
+      if (!image.naturalWidth || !image.naturalHeight) {
+        throw new Error(this._t.imageProcessingFailed);
+      }
+
+      const scale = Math.min(
+        1,
+        MAX_IMAGE_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight)
+      );
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        throw new Error(this._t.imageProcessingFailed);
+      }
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      let blob;
+      for (const quality of [0.86, 0.72, 0.58, 0.44]) {
+        blob = await new Promise((resolve) =>
+          canvas.toBlob(resolve, "image/jpeg", quality)
+        );
+        if (!blob || blob.size <= MAX_COMPRESSED_IMAGE_BYTES) {
+          break;
+        }
+      }
+      if (!blob) {
+        throw new Error(this._t.imageProcessingFailed);
+      }
+      if (blob.size > MAX_COMPRESSED_IMAGE_BYTES) {
+        throw new Error(this._t.imageTooLarge);
+      }
+      uploadFile = blob;
+      mimeType = "image/jpeg";
+    } else if (!ALLOWED_IMAGE_TYPES.has(mimeType)) {
+      throw new Error(this._t.invalidImage);
     }
-    if (!blob) {
-      throw new Error(this._t.imageProcessingFailed);
-    }
-    if (blob.size > MAX_UPLOAD_IMAGE_BYTES) {
-      throw new Error(this._t.imageTooLarge);
-    }
+
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = () => reject(new Error(this._t.imageProcessingFailed));
-      reader.readAsDataURL(blob);
+      reader.readAsDataURL(uploadFile);
     });
     if (typeof dataUrl !== "string" || !dataUrl.includes(",")) {
       throw new Error(this._t.imageProcessingFailed);
     }
     return {
-      base64: dataUrl.slice(dataUrl.indexOf(",") + 1),
+      file: uploadFile,
       dataUrl,
-      mimeType: "image/jpeg",
+      mimeType,
     };
   }
 

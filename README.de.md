@@ -157,51 +157,26 @@ ausgeblendet werden.
 
 ### Fotoerkennung
 
-Die Fotoerkennung wird für jeden Zähler unabhängig konfiguriert. Trage beim
-Anlegen des Zählers oder später über das Drei-Punkte-Menü seines Eintrags unter
-**Einstellungen > Geräte & Dienste > Manuelle Energiemessung > Neu
-konfigurieren** Folgendes ein:
+Die Fotoerkennung wird für jeden Zähler separat konfiguriert. Richte sie beim
+Anlegen des Zählers oder später unter **Einstellungen > Geräte & Dienste >
+Manuelle Energiemessung > Neu konfigurieren** ein.
 
-- **Provider-Adresse**: eine OpenAI-kompatible Basis-URL oder ein vollständiger
-  Chat-Completions-Endpunkt. Verwende für Ollama zum Beispiel
-  `http://192.168.1.10:11434`; die Integration ruft dann
-  `/v1/chat/completions` auf. Die Adresse muss vom Home-Assistant-Host oder
-  -Container erreichbar sein. `localhost` bezeichnet Home Assistant selbst.
-- **API-Token**: optionaler Bearer-Token, den ausschließlich das
-  Home-Assistant-Backend sendet.
-- **Modell**: das beim Provider installierte Vision-Modell. Jeder vorhandene
-  und neue Zähler erhält `qwen2.5vl:7b` als eigenen Standardwert, der ohne
-  Auswirkungen auf andere Zähler geändert werden kann.
-- **Prompt**: Jeder vorhandene und neue Zähler erhält eine eigene Kopie des
-  eingebauten Standardprompts. Sie kann später für diesen Zähler geändert
-  werden, ohne andere Zähler zu beeinflussen.
-- **Bild vor der Erkennung komprimieren**: ist standardmäßig aktiviert und
-  kann für jeden Zähler unabhängig konfiguriert werden.
+Trage die Adresse eines OpenAI-kompatiblen Vision-Providers ein, zum Beispiel
+`http://192.168.1.10:11434` für Ollama, sowie ein API-Token, falls der Provider
+eines benötigt. Modell und Prompt sind vorausgefüllt und können für jeden Zähler
+angepasst werden. Auch die Bildkomprimierung lässt sich pro Zähler ein- oder
+ausschalten.
 
-Die Provider-Adresse kann leer bleiben, wenn die Fotoerkennung nicht benötigt
-wird. Die vorhandenen manuellen Funktionen arbeiten auch ohne Provider weiter.
+Verwende in der Dashboard-Karte **Foto aufnehmen** oder **Foto hochladen**. Die
+Integration sendet das Bild an den konfigurierten Provider, speichert es aber
+nicht dauerhaft. Für den Provider können eigene Speicher- und Datenschutzregeln
+gelten. Ein kompakter Fortschrittsbalken zeigt den aktuellen Schritt und markiert
+bei einem Fehler den zuletzt erreichten Schritt.
 
-Wähle **Foto aufnehmen**, um auf einem Mobilgerät die rückseitige Kamera
-anzufordern, oder **Foto hochladen**, um ein vorhandenes Bild auszuwählen. Das
-Bild wird entsprechend der direkt im Konfigurationsdialog beschriebenen
-Komprimierungseinstellung des Zählers verarbeitet. Die Integration speichert
-das Foto nicht dauerhaft. Abgesehen vom für diesen Zähler
-konfigurierten Prompt erhält der Provider nur das Foto; gespeicherte
-Zählerstände, Zeitstempel, Zählertyp und Einheiten werden nicht als
-Erkennungskontext gesendet. Für den Provider können eigene Speicher- und
-Datenschutzregeln gelten. Der Verbindungsaufbau zum Provider ist auf 5
-Sekunden begrenzt. Nach aufgebauter Verbindung darf die Erkennung bis zu 90
-Sekunden dauern, bevor sie abgebrochen wird. Während der Erkennung zeigt ein
-kompakter Fortschrittsbalken den aktuellen Schritt: Bild vorbereiten und
-übertragen, Verbindung zum LLM, Bild und Prompt abschicken, Antwort empfangen
-und Ergebnis verarbeiten. Schlägt die Erkennung fehl, bleibt der zuletzt
-erreichte Schritt sichtbar und wird als Fehler markiert.
-
-Nach der Erkennung zeigt die Karte das Foto an, füllt den erkannten Zählerstand
-ein und belegt den editierbaren Ablesezeitpunkt mit der aktuellen Zeit vor. Der
-Ablesezeitpunkt wird weder an den Provider gesendet noch von ihm geprüft.
-Bestätige oder korrigiere den Wert und wähle **Zählerstand eintragen**, um den
-Datensatz zu verarbeiten. Die Erkennung allein speichert keinen Zählerstand.
+Der erkannte Zählerstand und der aktuelle Ablesezeitpunkt werden zur Bestätigung
+angezeigt. Korrigiere sie bei Bedarf und wähle **Zählerstand eintragen**, um den
+Datensatz zu speichern. Ohne konfigurierten Provider bleiben alle manuellen
+Funktionen verfügbar.
 
 Starte Home Assistant nach Installation oder Aktualisierung vollständig neu und
 lade den Browser neu, falls die Karte nicht in der Kartenauswahl erscheint.

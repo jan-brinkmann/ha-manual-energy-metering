@@ -148,48 +148,24 @@ card content and independently of whether a provider is configured.
 
 ### Photo recognition
 
-Photo recognition is configured independently for each meter. During meter
-creation, or later through the meter entry's three-dot menu under **Settings >
-Devices & services > Manual Energy Metering > Reconfigure**, enter:
+Photo recognition is configured separately for each meter. Configure it while
+creating the meter or later under **Settings > Devices & services > Manual
+Energy Metering > Reconfigure**.
 
-- **Provider address**: an OpenAI-compatible base URL or complete Chat
-  Completions endpoint. For Ollama, use for example
-  `http://192.168.1.10:11434`; the integration then calls
-  `/v1/chat/completions`. The address must be reachable from the Home Assistant
-  host or container. `localhost` refers to Home Assistant itself.
-- **API token**: an optional bearer token that is sent only by the Home
-  Assistant backend.
-- **Model**: the vision model installed at the provider. Every existing and
-  new meter receives `qwen2.5vl:7b` as its own default, which can be changed
-  without affecting other meters.
-- **Prompt**: every existing and new meter receives its own copy of the built-in
-  standard prompt. It can be changed later for that meter without affecting any
-  other meter.
-- **Compress image before recognition**: enabled by default and configurable
-  independently for each meter.
+Enter the address of an OpenAI-compatible vision provider, such as
+`http://192.168.1.10:11434` for Ollama, and an API token if the provider requires
+one. Model and prompt are prefilled and can be adjusted for each meter. Image
+compression can also be enabled or disabled per meter.
 
-The provider address may be left empty when photo recognition is not needed.
-Existing manual functions continue to work without a provider.
+Use **Take photo** or **Upload photo** in the dashboard card. The integration
+sends the image to the configured provider but does not store it permanently.
+The provider may apply its own storage and privacy policy. A compact progress
+bar shows the current recognition stage and marks the last reached stage if an
+error occurs.
 
-Select **Take photo** to request the rear camera on a mobile device, or **Upload
-photo** to select an existing image. The image is processed according to the
-per-meter compression setting described directly in the configuration dialog.
-The integration does not retain the photograph. Apart from
-the meter's configured prompt, the provider receives only the photograph; stored
-readings, timestamps, meter type, and units are not sent as recognition context.
-The provider may apply its own storage and privacy policy. Establishing the
-provider connection is limited to 5 seconds. Once connected, recognition may
-take up to 90 seconds before it is canceled. During recognition, a compact
-progress bar shows the current stage: preparing and uploading the image,
-connecting to the LLM, sending the image and prompt, receiving the response,
-and processing the result. If recognition fails, the last reached stage remains
-visible and is marked as an error.
-
-After recognition, the card displays the photograph, fills in the recognized
-meter reading, and prefills the editable reading time with the current time. The
-reading time is neither sent to nor checked by the provider. Confirm or correct
-the value and select **Add reading** to process the record. Recognition alone
-never stores a meter reading.
+The recognized reading and the current reading time are shown for confirmation.
+Correct them if necessary and select **Add reading** to save the record. Without
+a configured provider, all manual functions remain available.
 
 After installing or updating the integration, fully restart Home Assistant and
 reload the browser if the card is not shown in the card picker.

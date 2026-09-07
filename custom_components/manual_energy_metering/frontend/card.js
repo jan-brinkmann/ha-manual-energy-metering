@@ -16,6 +16,16 @@ const RECOGNITION_STAGES = [
   "completed",
 ];
 
+const EXIF_TAGS = {
+  dateTime: 0x0132,
+  exifIfd: 0x8769,
+  dateTimeOriginal: 0x9003,
+  dateTimeDigitized: 0x9004,
+  offsetTime: 0x9010,
+  offsetTimeOriginal: 0x9011,
+  offsetTimeDigitized: 0x9012,
+};
+
 const METER_ICONS = {
   electricity: "electricity.png",
   gas: "gas.png",
@@ -43,7 +53,7 @@ const TRANSLATIONS = {
     takePhoto: "Take photo",
     uploadPhoto: "Upload photo",
     photoHint:
-      "The recognized value is shown for confirmation before saving. The reading time is prefilled with the current time and remains editable.",
+      "The recognized value is shown for confirmation before saving. For uploaded photos, the capture time is used when available; the reading time remains editable.",
     photoNotConfigured:
       "Configure photo recognition for this meter to use these buttons.",
     recognizing: "The meter reading is being recognized...",
@@ -115,7 +125,7 @@ const TRANSLATIONS = {
     takePhoto: "Foto aufnehmen",
     uploadPhoto: "Foto hochladen",
     photoHint:
-      "Der erkannte Wert wird vor dem Speichern zur Bestätigung angezeigt. Der Ablesezeitpunkt ist mit der aktuellen Zeit vorausgefüllt und bleibt editierbar.",
+      "Der erkannte Wert wird vor dem Speichern zur Bestätigung angezeigt. Bei hochgeladenen Fotos wird, falls vorhanden, der Aufnahmezeitpunkt verwendet und bleibt editierbar.",
     photoNotConfigured:
       "Konfiguriere die Fotoerkennung für diesen Zähler, um diese Schaltflächen zu verwenden.",
     recognizing: "Der Zählerstand wird erkannt...",
@@ -545,7 +555,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
             <span>${this._escape(this._t.takePhoto)}</span>
           </label>
           <label class="photo-button ${disabled ? "disabled" : ""}">
-            <input ${inputAttributes} />
+            <input ${inputAttributes} data-read-photo-timestamp="true" />
             <ha-icon icon="mdi:image-plus"></ha-icon>
             <span>${this._escape(this._t.uploadPhoto)}</span>
           </label>
@@ -835,7 +845,8 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
 
     const entityId = this._config.entity;
-    const timestamp = this._formatInputTimestamp(new Date());
+    const currentTimestamp = this._formatInputTimestamp(new Date());
+    const readPhotoTimestamp = input.dataset.readPhotoTimestamp === "true";
     this._photoPreview = undefined;
     this._recognitionStage = "preparing";
     this._recognitionFailed = false;
@@ -843,10 +854,17 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._message = { text: this._t.recognizing, type: "info" };
     this._render();
     try {
-      const prepared = await this._prepareImage(
-        file,
-        this._stateData().compressImage
-      );
+      const [prepared, photoTimestamp] = await Promise.all([
+        this._prepareImage(file, this._stateData().compressImage),
+        readPhotoTimestamp
+          ? this._readPhotoTimestamp(file)
+          : Promise.resolve(undefined),
+      ]);
+      const timestamp = photoTimestamp || currentTimestamp;
+      if (photoTimestamp && this._config.entity === entityId) {
+        this._formTimestamp = photoTimestamp;
+        this._timestampDirty = true;
+      }
       this._setRecognitionStage("uploading");
       const controller = new AbortController();
       const timeoutId = window.setTimeout(
@@ -903,6 +921,336 @@ class ManualEnergyMeteringCard extends HTMLElement {
       this._busy = false;
       this._render();
     }
+  }
+
+  async _readPhotoTimestamp(file) {
+    if (!file.size || file.size > MAX_SOURCE_IMAGE_BYTES) {
+      return undefined;
+    }
+    try {
+      const view = new DataView(await file.arrayBuffer());
+      const tiff = this._findExifTiff(view);
+      if (!tiff) {
+        return undefined;
+      }
+      const metadata = this._readExifDateTime(view, tiff);
+      return metadata
+        ? this._formatExifDateTime(metadata)
+        : undefined;
+    } catch (_error) {
+      // Missing or malformed metadata must not prevent photo recognition.
+      return undefined;
+    }
+  }
+
+  _findExifTiff(view) {
+    const hasBytes = (offset, values) =>
+      offset >= 0 &&
+      offset + values.length <= view.byteLength &&
+      values.every((value, index) => view.getUint8(offset + index) === value);
+    const tiffRange = (offset, length) => {
+      const exifHeader = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00];
+      if (length >= exifHeader.length && hasBytes(offset, exifHeader)) {
+        offset += exifHeader.length;
+        length -= exifHeader.length;
+      }
+      return length >= 8 && offset + length <= view.byteLength
+        ? { offset, length }
+        : undefined;
+    };
+
+    if (view.byteLength >= 4 && view.getUint16(0, false) === 0xffd8) {
+      let cursor = 2;
+      while (cursor + 4 <= view.byteLength) {
+        if (view.getUint8(cursor) !== 0xff) {
+          break;
+        }
+        while (
+          cursor < view.byteLength &&
+          view.getUint8(cursor) === 0xff
+        ) {
+          cursor += 1;
+        }
+        if (cursor >= view.byteLength) {
+          break;
+        }
+        const marker = view.getUint8(cursor);
+        cursor += 1;
+        if (marker === 0xda || marker === 0xd9) {
+          break;
+        }
+        if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+          continue;
+        }
+        if (cursor + 2 > view.byteLength) {
+          break;
+        }
+        const segmentLength = view.getUint16(cursor, false);
+        if (
+          segmentLength < 2 ||
+          cursor + segmentLength > view.byteLength
+        ) {
+          break;
+        }
+        const dataOffset = cursor + 2;
+        const dataLength = segmentLength - 2;
+        if (
+          marker === 0xe1 &&
+          hasBytes(dataOffset, [0x45, 0x78, 0x69, 0x66, 0x00, 0x00])
+        ) {
+          return tiffRange(dataOffset, dataLength);
+        }
+        cursor += segmentLength;
+      }
+      return undefined;
+    }
+
+    if (
+      view.byteLength >= 8 &&
+      hasBytes(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    ) {
+      let cursor = 8;
+      while (cursor + 12 <= view.byteLength) {
+        const chunkLength = view.getUint32(cursor, false);
+        const dataOffset = cursor + 8;
+        const chunkEnd = dataOffset + chunkLength;
+        if (chunkEnd + 4 > view.byteLength) {
+          break;
+        }
+        if (hasBytes(cursor + 4, [0x65, 0x58, 0x49, 0x66])) {
+          return tiffRange(dataOffset, chunkLength);
+        }
+        cursor = chunkEnd + 4;
+      }
+      return undefined;
+    }
+
+    if (
+      view.byteLength >= 12 &&
+      hasBytes(0, [0x52, 0x49, 0x46, 0x46]) &&
+      hasBytes(8, [0x57, 0x45, 0x42, 0x50])
+    ) {
+      let cursor = 12;
+      while (cursor + 8 <= view.byteLength) {
+        const chunkLength = view.getUint32(cursor + 4, true);
+        const dataOffset = cursor + 8;
+        if (dataOffset + chunkLength > view.byteLength) {
+          break;
+        }
+        if (hasBytes(cursor, [0x45, 0x58, 0x49, 0x46])) {
+          return tiffRange(dataOffset, chunkLength);
+        }
+        cursor = dataOffset + chunkLength + (chunkLength % 2);
+      }
+    }
+    return undefined;
+  }
+
+  _readExifDateTime(view, tiff) {
+    const end = tiff.offset + tiff.length;
+    const canRead = (offset, length) =>
+      offset >= tiff.offset &&
+      length >= 0 &&
+      offset + length <= end &&
+      offset + length <= view.byteLength;
+    if (!canRead(tiff.offset, 8)) {
+      return undefined;
+    }
+
+    const byteOrder = view.getUint16(tiff.offset, false);
+    if (byteOrder !== 0x4949 && byteOrder !== 0x4d4d) {
+      return undefined;
+    }
+    const littleEndian = byteOrder === 0x4949;
+    const readUint16 = (offset) =>
+      canRead(offset, 2)
+        ? view.getUint16(offset, littleEndian)
+        : undefined;
+    const readUint32 = (offset) =>
+      canRead(offset, 4)
+        ? view.getUint32(offset, littleEndian)
+        : undefined;
+    if (readUint16(tiff.offset + 2) !== 42) {
+      return undefined;
+    }
+
+    const readIfd = (relativeOffset) => {
+      const entries = new Map();
+      if (!Number.isInteger(relativeOffset)) {
+        return entries;
+      }
+      const directoryOffset = tiff.offset + relativeOffset;
+      const count = readUint16(directoryOffset);
+      if (count === undefined) {
+        return entries;
+      }
+      for (let index = 0; index < count; index += 1) {
+        const entryOffset = directoryOffset + 2 + index * 12;
+        if (!canRead(entryOffset, 12)) {
+          break;
+        }
+        entries.set(readUint16(entryOffset), {
+          offset: entryOffset,
+          type: readUint16(entryOffset + 2),
+          count: readUint32(entryOffset + 4),
+        });
+      }
+      return entries;
+    };
+    const readAscii = (entry) => {
+      if (
+        !entry ||
+        entry.type !== 2 ||
+        !entry.count ||
+        entry.count > 128
+      ) {
+        return undefined;
+      }
+      let valueOffset = entry.offset + 8;
+      if (entry.count > 4) {
+        const relativeOffset = readUint32(entry.offset + 8);
+        if (relativeOffset === undefined) {
+          return undefined;
+        }
+        valueOffset = tiff.offset + relativeOffset;
+      }
+      if (!canRead(valueOffset, entry.count)) {
+        return undefined;
+      }
+      let value = "";
+      for (let index = 0; index < entry.count; index += 1) {
+        const character = view.getUint8(valueOffset + index);
+        if (character === 0) {
+          break;
+        }
+        value += String.fromCharCode(character);
+      }
+      return value.trim() || undefined;
+    };
+    const readLong = (entry) =>
+      entry?.type === 4 && entry.count === 1
+        ? readUint32(entry.offset + 8)
+        : undefined;
+
+    const firstIfdOffset = readUint32(tiff.offset + 4);
+    if (firstIfdOffset === undefined) {
+      return undefined;
+    }
+    const ifd = readIfd(firstIfdOffset);
+    const exifIfdOffset = readLong(ifd.get(EXIF_TAGS.exifIfd));
+    const exifIfd =
+      exifIfdOffset === undefined ? new Map() : readIfd(exifIfdOffset);
+    const fromIfds = (tag) =>
+      readAscii(exifIfd.get(tag)) || readAscii(ifd.get(tag));
+    const generalOffset = fromIfds(EXIF_TAGS.offsetTime);
+
+    const original = fromIfds(EXIF_TAGS.dateTimeOriginal);
+    if (original) {
+      return {
+        dateTime: original,
+        offset:
+          fromIfds(EXIF_TAGS.offsetTimeOriginal) || generalOffset,
+      };
+    }
+    const digitized = fromIfds(EXIF_TAGS.dateTimeDigitized);
+    if (digitized) {
+      return {
+        dateTime: digitized,
+        offset:
+          fromIfds(EXIF_TAGS.offsetTimeDigitized) || generalOffset,
+      };
+    }
+    const dateTime = fromIfds(EXIF_TAGS.dateTime);
+    return dateTime
+      ? { dateTime, offset: generalOffset }
+      : undefined;
+  }
+
+  _formatExifDateTime(metadata) {
+    const match = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
+      metadata.dateTime.trim()
+    );
+    if (!match) {
+      return undefined;
+    }
+    const values = match.slice(1, 6).map((value) => Number(value));
+    const [year, month, day, hour, minute] = values;
+    if (
+      year < 1 ||
+      year > 9999 ||
+      month < 1 ||
+      month > 12 ||
+      hour > 23 ||
+      minute > 59
+    ) {
+      return undefined;
+    }
+    const validationDate = new Date(0);
+    validationDate.setUTCFullYear(year, month - 1, day);
+    validationDate.setUTCHours(hour, minute, 0, 0);
+    if (
+      validationDate.getUTCFullYear() !== year ||
+      validationDate.getUTCMonth() !== month - 1 ||
+      validationDate.getUTCDate() !== day ||
+      validationDate.getUTCHours() !== hour ||
+      validationDate.getUTCMinutes() !== minute
+    ) {
+      return undefined;
+    }
+
+    const pad = (value) => String(value).padStart(2, "0");
+    const localTimestamp =
+      String(year).padStart(4, "0") +
+      "-" +
+      pad(month) +
+      "-" +
+      pad(day) +
+      "T" +
+      pad(hour) +
+      ":" +
+      pad(minute) +
+      ":" +
+      "00";
+    const offset = String(metadata.offset || "")
+      .trim()
+      .replace(/^([+-]\d{2})(\d{2})$/, "$1:$2");
+    if (/^(?:Z|[+-]\d{2}:\d{2})$/.test(offset)) {
+      const instant = new Date(localTimestamp + offset);
+      if (!Number.isNaN(instant.getTime())) {
+        return this._formatPhotoInstant(instant);
+      }
+    }
+    return localTimestamp;
+  }
+
+  _formatPhotoInstant(date) {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: this._timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      })
+        .formatToParts(date)
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, part.value])
+    );
+    return (
+      parts.year +
+      "-" +
+      parts.month +
+      "-" +
+      parts.day +
+      "T" +
+      parts.hour +
+      ":" +
+      parts.minute +
+      ":" +
+      "00"
+    );
   }
 
   async _prepareImage(file, compressImage) {

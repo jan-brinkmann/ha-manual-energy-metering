@@ -173,8 +173,10 @@ nicht dauerhaft. Für den Provider können eigene Speicher- und Datenschutzregel
 gelten. Ein kompakter Fortschrittsbalken zeigt den aktuellen Schritt und markiert
 bei einem Fehler den zuletzt erreichten Schritt.
 
-Der erkannte Zählerstand und der aktuelle Ablesezeitpunkt werden zur Bestätigung
-angezeigt. Korrigiere sie bei Bedarf und wähle **Zählerstand eintragen**, um den
+Der erkannte Zählerstand und der Ablesezeitpunkt werden zur Bestätigung
+angezeigt. Bei einer hochgeladenen Datei werden, falls vorhanden, Aufnahmedatum
+und -uhrzeit aus den Bildmetadaten verwendet, andernfalls die aktuelle Zeit.
+Korrigiere die Werte bei Bedarf und wähle **Zählerstand eintragen**, um den
 Datensatz zu speichern. Ohne konfigurierten Provider bleiben alle manuellen
 Funktionen verfügbar.
 

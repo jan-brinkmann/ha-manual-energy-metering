@@ -163,9 +163,11 @@ The provider may apply its own storage and privacy policy. A compact progress
 bar shows the current recognition stage and marks the last reached stage if an
 error occurs.
 
-The recognized reading and the current reading time are shown for confirmation.
-Correct them if necessary and select **Add reading** to save the record. Without
-a configured provider, all manual functions remain available.
+The recognized reading and reading time are shown for confirmation. For an
+uploaded file, the capture date and time from its image metadata are used when
+available; otherwise the current time is used. Correct the values if necessary
+and select **Add reading** to save the record. Without a configured provider,
+all manual functions remain available.
 
 After installing or updating the integration, fully restart Home Assistant and
 reload the browser if the card is not shown in the card picker.

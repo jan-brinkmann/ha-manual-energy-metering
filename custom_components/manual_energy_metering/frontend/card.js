@@ -5,7 +5,16 @@ const EDITOR_TAG = "manual-energy-metering-card-editor";
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_COMPRESSED_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION = 1600;
+const VISION_REQUEST_TIMEOUT_MS = 120 * 1000;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const RECOGNITION_STAGES = [
+  "preparing",
+  "uploading",
+  "connecting",
+  "request_sent",
+  "response_received",
+  "completed",
+];
 
 const METER_ICONS = {
   electricity: "electricity.png",
@@ -39,6 +48,15 @@ const TRANSLATIONS = {
       "Configure photo recognition for this meter to use these buttons.",
     recognizing: "The meter reading is being recognized...",
     recognized: "Reading recognized. Confirm or correct the value, then add it.",
+    recognitionStatus: "Recognition progress",
+    recognitionSteps: {
+      preparing: "Prepare image",
+      uploading: "Upload image",
+      connecting: "Connect to LLM",
+      request_sent: "Image and prompt sent",
+      response_received: "Response received",
+      completed: "Result processed",
+    },
     previewAlt: "Selected meter photograph",
     add: "Add reading",
     added: "The meter reading was added.",
@@ -76,6 +94,8 @@ const TRANSLATIONS = {
       vision_image_too_large: "The original image is too large.",
       vision_provider_error: "The vision provider rejected the request.",
       vision_provider_unavailable: "The vision provider is unavailable.",
+      vision_provider_timeout:
+        "The vision provider did not respond within the time limit.",
       vision_invalid_response:
         "The vision provider returned an invalid meter reading.",
       vision_not_recognized:
@@ -101,6 +121,15 @@ const TRANSLATIONS = {
     recognizing: "Der Zählerstand wird erkannt...",
     recognized:
       "Zählerstand erkannt. Bestätige oder korrigiere den Wert und trage ihn anschließend ein.",
+    recognitionStatus: "Fortschritt der Erkennung",
+    recognitionSteps: {
+      preparing: "Bild vorbereiten",
+      uploading: "Bild übertragen",
+      connecting: "Verbindung zum LLM",
+      request_sent: "Bild und Prompt abgeschickt",
+      response_received: "Antwort erhalten",
+      completed: "Ergebnis verarbeitet",
+    },
     previewAlt: "Ausgewähltes Zählerfoto",
     add: "Zählerstand eintragen",
     added: "Der Zählerstand wurde eingetragen.",
@@ -142,6 +171,8 @@ const TRANSLATIONS = {
       vision_image_too_large: "Das Originalbild ist zu groß.",
       vision_provider_error: "Der Vision-Provider hat die Anfrage abgelehnt.",
       vision_provider_unavailable: "Der Vision-Provider ist nicht erreichbar.",
+      vision_provider_timeout:
+        "Der Vision-Provider hat nicht innerhalb des Zeitlimits geantwortet.",
       vision_invalid_response:
         "Der Vision-Provider hat keinen gültigen Zählerstand zurückgegeben.",
       vision_not_recognized:
@@ -258,6 +289,8 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._busy = false;
     this._message = undefined;
     this._photoPreview = undefined;
+    this._recognitionStage = undefined;
+    this._recognitionFailed = false;
     this._lastResult = undefined;
     this._historyEntity = undefined;
     this._historyUrl = undefined;
@@ -316,7 +349,10 @@ class ManualEnergyMeteringCard extends HTMLElement {
     if (!this._config?.show_photo_buttons) {
       return 7;
     }
-    return this._photoPreview ? 11 : 9;
+    if (this._photoPreview) {
+      return 12;
+    }
+    return this._recognitionStage ? 10 : 9;
   }
 
   getGridOptions() {
@@ -360,6 +396,8 @@ class ManualEnergyMeteringCard extends HTMLElement {
       : "";
     this._timestampDirty = false;
     this._photoPreview = undefined;
+    this._recognitionStage = undefined;
+    this._recognitionFailed = false;
   }
 
   _stateData() {
@@ -410,7 +448,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
           hasEntity,
           available,
           data.visionConfigured
-        )}${this._renderPhotoPreview()}`
+        )}${this._renderRecognitionProgress()}${this._renderPhotoPreview()}`
       : "";
 
     this.shadowRoot.innerHTML = `
@@ -515,6 +553,61 @@ class ManualEnergyMeteringCard extends HTMLElement {
         <p>${this._escape(
           visionConfigured ? this._t.photoHint : this._t.photoNotConfigured
         )}</p>
+      </section>
+    `;
+  }
+
+  _renderRecognitionProgress() {
+    const currentIndex = RECOGNITION_STAGES.indexOf(this._recognitionStage);
+    if (currentIndex < 0) {
+      return "";
+    }
+
+    const finished =
+      this._recognitionStage === "completed" && !this._recognitionFailed;
+    const label =
+      this._t.recognitionSteps[this._recognitionStage] ||
+      this._recognitionStage;
+    const segments = RECOGNITION_STAGES.map((stage, index) => {
+      const complete =
+        index < currentIndex || (finished && index === currentIndex);
+      const stateClass = complete
+        ? "complete"
+        : index === currentIndex
+          ? this._recognitionFailed
+            ? "error"
+            : "current"
+          : "";
+      return `<span class="recognition-segment ${stateClass}" title="${this._escapeAttribute(
+        this._t.recognitionSteps[stage] || stage
+      )}"></span>`;
+    }).join("");
+    const icon = this._recognitionFailed
+      ? "mdi:alert-circle-outline"
+      : finished
+        ? "mdi:check-circle-outline"
+        : "mdi:progress-clock";
+
+    return `
+      <section class="recognition-progress">
+        <div
+          class="recognition-track"
+          role="progressbar"
+          aria-label="${this._escapeAttribute(this._t.recognitionStatus)}"
+          aria-valuemin="0"
+          aria-valuemax="${RECOGNITION_STAGES.length}"
+          aria-valuenow="${currentIndex + 1}"
+          aria-valuetext="${this._escapeAttribute(label)}"
+        >${segments}</div>
+        <div class="recognition-current ${
+          this._recognitionFailed ? "error" : finished ? "complete" : ""
+        }" role="status" aria-live="polite">
+          <ha-icon icon="${icon}"></ha-icon>
+          <span>${this._escape(label)}</span>
+          <span class="recognition-count">${currentIndex + 1} / ${
+            RECOGNITION_STAGES.length
+          }</span>
+        </div>
       </section>
     `;
   }
@@ -639,6 +732,100 @@ class ManualEnergyMeteringCard extends HTMLElement {
     `;
   }
 
+  _setRecognitionStage(stage) {
+    if (!RECOGNITION_STAGES.includes(stage)) {
+      return;
+    }
+    this._recognitionStage = stage;
+    this._recognitionFailed = false;
+    this._render();
+  }
+
+  async _readRecognitionResponse(response) {
+    const contentType = response.headers.get("Content-Type") || "";
+    if (!response.ok || !contentType.includes("text/event-stream")) {
+      let payload;
+      try {
+        payload = await response.json();
+      } catch (_error) {
+        throw new Error(this._t.genericError);
+      }
+      if (!response.ok) {
+        const error = new Error(payload?.message || this._t.genericError);
+        error.code = payload?.code;
+        throw error;
+      }
+      return payload;
+    }
+    if (!response.body?.getReader) {
+      throw new Error(this._t.genericError);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let dataLines = [];
+    let result;
+
+    const handleEvent = () => {
+      if (!dataLines.length) {
+        return;
+      }
+      const rawPayload = dataLines.join("\n");
+      dataLines = [];
+      let payload;
+      try {
+        payload = JSON.parse(rawPayload);
+      } catch (_error) {
+        throw new Error(this._t.genericError);
+      }
+      if (payload?.event === "progress") {
+        this._setRecognitionStage(payload.stage);
+      } else if (payload?.event === "error") {
+        const error = new Error(payload.message || this._t.genericError);
+        error.code = payload.code;
+        throw error;
+      } else if (payload?.event === "result") {
+        result = payload;
+      }
+    };
+    const processLine = (line) => {
+      const normalized = line.endsWith("\r") ? line.slice(0, -1) : line;
+      if (normalized === "") {
+        handleEvent();
+      } else if (normalized.startsWith("data:")) {
+        dataLines.push(normalized.slice(5).trimStart());
+      }
+    };
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex;
+        while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+          processLine(buffer.slice(0, newlineIndex));
+          buffer = buffer.slice(newlineIndex + 1);
+        }
+      }
+      buffer += decoder.decode();
+      if (buffer) {
+        buffer.split("\n").forEach(processLine);
+      }
+      handleEvent();
+    } finally {
+      reader.releaseLock();
+    }
+
+    if (!result) {
+      throw new Error(this._t.genericError);
+    }
+    return result;
+  }
+
   async _recognizePhoto(event) {
     const input = event.target;
     const file = input.files?.[0];
@@ -650,6 +837,8 @@ class ManualEnergyMeteringCard extends HTMLElement {
     const entityId = this._config.entity;
     const timestamp = this._formatInputTimestamp(new Date());
     this._photoPreview = undefined;
+    this._recognitionStage = "preparing";
+    this._recognitionFailed = false;
     this._busy = true;
     this._message = { text: this._t.recognizing, type: "info" };
     this._render();
@@ -658,30 +847,44 @@ class ManualEnergyMeteringCard extends HTMLElement {
         file,
         this._stateData().compressImage
       );
-      const response = await this._hass.fetchWithAuth(
-        `/api/${DOMAIN}/recognize/${encodeURIComponent(entityId)}`,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": prepared.mimeType,
-          },
-          body: prepared.file,
-        }
+      this._setRecognitionStage("uploading");
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        VISION_REQUEST_TIMEOUT_MS
       );
       let result;
       try {
-        result = await response.json();
-      } catch (_error) {
-        throw new Error(this._t.genericError);
-      }
-      if (!response.ok) {
-        const error = new Error(result?.message || this._t.genericError);
-        error.code = result?.code;
+        const response = await this._hass.fetchWithAuth(
+          `/api/${DOMAIN}/recognize/${encodeURIComponent(entityId)}`,
+          {
+            method: "POST",
+            headers: {
+              Accept: "text/event-stream, application/json",
+              "Content-Type": prepared.mimeType,
+            },
+            body: prepared.file,
+            signal: controller.signal,
+          }
+        );
+        result = await this._readRecognitionResponse(response);
+      } catch (error) {
+        if (controller.signal.aborted) {
+          const timeoutError = new Error(
+            this._t.errors.vision_provider_timeout
+          );
+          timeoutError.code = "vision_provider_timeout";
+          throw timeoutError;
+        }
         throw error;
+      } finally {
+        window.clearTimeout(timeoutId);
       }
       if (this._config.entity !== entityId) {
         return;
+      }
+      if (this._recognitionStage !== "completed") {
+        this._recognitionStage = "completed";
       }
       this._formValue = this._formatInputReading(result.value);
       this._formTimestamp = timestamp;
@@ -690,6 +893,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
       this._message = { text: this._t.recognized, type: "success" };
     } catch (error) {
       if (this._config.entity === entityId) {
+        this._recognitionFailed = true;
         this._message = {
           text: this._localizedError(error),
           type: "error",
@@ -1011,6 +1215,55 @@ class ManualEnergyMeteringCard extends HTMLElement {
         font-size: 0.8rem;
         line-height: 1.45;
       }
+      .recognition-progress {
+        margin: -7px 0 18px;
+      }
+      .recognition-track {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 4px;
+      }
+      .recognition-segment {
+        height: 5px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--primary-text-color) 14%, transparent);
+      }
+      .recognition-segment.complete,
+      .recognition-segment.current {
+        background: var(--primary-color);
+      }
+      .recognition-segment.current {
+        animation: recognition-pulse 1.2s ease-in-out infinite;
+      }
+      .recognition-segment.error {
+        background: var(--error-color);
+      }
+      .recognition-current {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 7px;
+        color: var(--secondary-text-color);
+        font-size: 0.8rem;
+        line-height: 1.3;
+      }
+      .recognition-current.complete {
+        color: var(--success-color, #2e7d32);
+      }
+      .recognition-current.error {
+        color: var(--error-color);
+      }
+      .recognition-current ha-icon {
+        --mdc-icon-size: 17px;
+      }
+      .recognition-count {
+        margin-left: auto;
+        color: inherit;
+        font-variant-numeric: tabular-nums;
+      }
+      @keyframes recognition-pulse {
+        50% { opacity: 0.42; }
+      }
       .photo-preview {
         margin: 0 0 18px;
       }
@@ -1128,6 +1381,9 @@ class ManualEnergyMeteringCard extends HTMLElement {
         text-decoration: none;
       }
       .history-link a:hover { text-decoration: underline; }
+      @media (prefers-reduced-motion: reduce) {
+        .recognition-segment.current { animation: none; }
+      }
       @media (max-width: 620px) {
         .content { padding: 18px; }
         .summary { column-gap: 12px; }

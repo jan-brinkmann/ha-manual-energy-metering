@@ -7,6 +7,7 @@ import base64
 import json
 import math
 import re
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
@@ -18,8 +19,12 @@ if TYPE_CHECKING:
 ALLOWED_IMAGE_TYPES = frozenset({"image/jpeg", "image/png", "image/webp"})
 MAX_VISION_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_PROVIDER_RESPONSE_BYTES = 1024 * 1024
-PROVIDER_TIMEOUT_SECONDS = 90
+PROVIDER_CONNECT_TIMEOUT_SECONDS = 5
+PROVIDER_RESPONSE_TIMEOUT_SECONDS = 90
+PROVIDER_TOTAL_TIMEOUT_SECONDS = 105
 _NUMBER_PATTERN = re.compile(r"^[+]?(?:\d+(?:\.\d*)?|\.\d+)$")
+
+VisionProgressCallback = Callable[[str], Awaitable[None]]
 
 
 class VisionError(RuntimeError):
@@ -196,6 +201,7 @@ async def async_recognize_meter(
     meter: ManualEnergyMetering,
     image: bytes,
     mime_type: str,
+    progress: VisionProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Send the original meter image bytes to this meter's provider."""
     import aiohttp
@@ -222,21 +228,62 @@ async def async_recognize_meter(
         )
 
     endpoint = chat_completions_url(api_url)
-    headers = {"Content-Type": "application/json"}
+    headers: dict[str, str] = {}
     token = str(data.get(CONF_VISION_API_TOKEN, "")).strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     image_base64 = base64.b64encode(image).decode("ascii")
     payload = recognition_request(model, prompt, image_base64, mime_type)
 
+    async def report_progress(stage: str) -> None:
+        if progress is not None:
+            await progress(stage)
+
+    class ProgressBytesPayload(aiohttp.payload.BytesPayload):
+        """Report once aiohttp has written the complete provider request body."""
+
+        def __init__(self, value: bytes) -> None:
+            super().__init__(value, content_type="application/json")
+            self._reported = False
+
+        async def _report_sent(self) -> None:
+            if not self._reported:
+                self._reported = True
+                await report_progress("request_sent")
+
+        async def write(self, writer: Any) -> None:
+            await super().write(writer)
+            await self._report_sent()
+
+        async def write_with_length(
+            self, writer: Any, content_length: int
+        ) -> None:
+            parent_write = getattr(super(), "write_with_length", None)
+            if parent_write is None:
+                await super().write(writer)
+            else:
+                await parent_write(writer, content_length)
+            await self._report_sent()
+
+    request_body = ProgressBytesPayload(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    )
+
     session = async_get_clientsession(hass)
     try:
+        await report_progress("connecting")
         async with session.post(
             endpoint,
             headers=headers,
-            json=payload,
-            timeout=aiohttp.ClientTimeout(total=PROVIDER_TIMEOUT_SECONDS),
+            data=request_body,
+            timeout=aiohttp.ClientTimeout(
+                total=PROVIDER_TOTAL_TIMEOUT_SECONDS,
+                connect=PROVIDER_CONNECT_TIMEOUT_SECONDS,
+                sock_connect=PROVIDER_CONNECT_TIMEOUT_SECONDS,
+                sock_read=PROVIDER_RESPONSE_TIMEOUT_SECONDS,
+            ),
         ) as response:
+            await report_progress("response_received")
             body = bytearray()
             while len(body) <= MAX_PROVIDER_RESPONSE_BYTES:
                 chunk = await response.content.read(
@@ -252,7 +299,12 @@ async def async_recognize_meter(
                 )
     except VisionError:
         raise
-    except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+    except asyncio.TimeoutError as err:
+        raise VisionError(
+            "vision_provider_timeout",
+            "The vision provider did not respond within the time limit.",
+        ) from err
+    except aiohttp.ClientError as err:
         raise VisionError(
             "vision_provider_unavailable", "The vision provider is unavailable."
         ) from err
@@ -267,4 +319,6 @@ async def async_recognize_meter(
         raise VisionError(
             "vision_invalid_response", "The provider returned invalid JSON."
         ) from err
-    return {"value": recognized_value(response_data), "model": model}
+    result = {"value": recognized_value(response_data), "model": model}
+    await report_progress("completed")
+    return result

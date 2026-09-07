@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from http import HTTPStatus
 
 from aiohttp import web
@@ -24,13 +25,6 @@ from .vision import (
 
 VISION_RECOGNIZE_URL = f"/api/{DOMAIN}/recognize/{{entity_id}}"
 _READ_CHUNK_SIZE = 64 * 1024
-_VISION_ERROR_STATUS = {
-    "vision_image_too_large": HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-    "vision_provider_error": HTTPStatus.BAD_GATEWAY,
-    "vision_provider_unavailable": HTTPStatus.SERVICE_UNAVAILABLE,
-    "vision_invalid_response": HTTPStatus.BAD_GATEWAY,
-    "vision_not_recognized": HTTPStatus.UNPROCESSABLE_ENTITY,
-}
 
 
 def _error_response(
@@ -42,6 +36,14 @@ def _error_response(
     )
 
 
+async def _stream_event(
+    response: web.StreamResponse, payload: dict[str, object]
+) -> None:
+    """Send one compact server-sent event to the dashboard card."""
+    data = json.dumps(payload, separators=(",", ":"))
+    await response.write(f"data: {data}\n\n".encode("utf-8"))
+
+
 class VisionRecognitionView(HomeAssistantView):
     """Accept one original image and return a recognized meter value."""
 
@@ -49,7 +51,9 @@ class VisionRecognitionView(HomeAssistantView):
     name = f"api:{DOMAIN}:recognize"
     requires_auth = True
 
-    async def post(self, request: web.Request, entity_id: str) -> web.Response:
+    async def post(
+        self, request: web.Request, entity_id: str
+    ) -> web.StreamResponse:
         """Recognize a reading without storing the photograph or reading."""
         hass: HomeAssistant = request.app[KEY_HASS]
         user = request[KEY_HASS_USER]
@@ -114,11 +118,52 @@ class VisionRecognitionView(HomeAssistantView):
                 )
 
         meter: ManualEnergyMetering = entry.runtime_data
+        stream = web.StreamResponse(
+            status=HTTPStatus.OK,
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+        stream.content_type = "text/event-stream"
+        stream.charset = "utf-8"
+        await stream.prepare(request)
+
+        async def send_progress(stage: str) -> None:
+            await _stream_event(
+                stream, {"event": "progress", "stage": stage}
+            )
+
         try:
             result = await async_recognize_meter(
-                hass, meter, bytes(image), mime_type
+                hass,
+                meter,
+                bytes(image),
+                mime_type,
+                progress=send_progress,
             )
         except VisionError as err:
-            status = _VISION_ERROR_STATUS.get(err.code, HTTPStatus.BAD_REQUEST)
-            return _error_response(err.code, str(err), status)
-        return web.json_response(result)
+            try:
+                await _stream_event(
+                    stream,
+                    {
+                        "event": "error",
+                        "code": err.code,
+                        "message": str(err),
+                    },
+                )
+            except ConnectionResetError:
+                return stream
+        except ConnectionResetError:
+            return stream
+        else:
+            try:
+                await _stream_event(stream, {"event": "result", **result})
+            except ConnectionResetError:
+                return stream
+
+        try:
+            await stream.write_eof()
+        except ConnectionResetError:
+            pass
+        return stream

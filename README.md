@@ -177,7 +177,13 @@ per-meter compression setting described directly in the configuration dialog.
 The integration does not retain the photograph. Apart from
 the meter's configured prompt, the provider receives only the photograph; stored
 readings, timestamps, meter type, and units are not sent as recognition context.
-The provider may apply its own storage and privacy policy.
+The provider may apply its own storage and privacy policy. Establishing the
+provider connection is limited to 5 seconds. Once connected, recognition may
+take up to 90 seconds before it is canceled. During recognition, a compact
+progress bar shows the current stage: preparing and uploading the image,
+connecting to the LLM, sending the image and prompt, receiving the response,
+and processing the result. If recognition fails, the last reached stage remains
+visible and is marked as an error.
 
 After recognition, the card displays the photograph, fills in the recognized
 meter reading, and prefills the editable reading time with the current time. The

@@ -189,7 +189,13 @@ das Foto nicht dauerhaft. Abgesehen vom für diesen Zähler
 konfigurierten Prompt erhält der Provider nur das Foto; gespeicherte
 Zählerstände, Zeitstempel, Zählertyp und Einheiten werden nicht als
 Erkennungskontext gesendet. Für den Provider können eigene Speicher- und
-Datenschutzregeln gelten.
+Datenschutzregeln gelten. Der Verbindungsaufbau zum Provider ist auf 5
+Sekunden begrenzt. Nach aufgebauter Verbindung darf die Erkennung bis zu 90
+Sekunden dauern, bevor sie abgebrochen wird. Während der Erkennung zeigt ein
+kompakter Fortschrittsbalken den aktuellen Schritt: Bild vorbereiten und
+übertragen, Verbindung zum LLM, Bild und Prompt abschicken, Antwort empfangen
+und Ergebnis verarbeiten. Schlägt die Erkennung fehl, bleibt der zuletzt
+erreichte Schritt sichtbar und wird als Fehler markiert.
 
 Nach der Erkennung zeigt die Karte das Foto an, füllt den erkannten Zählerstand
 ein und belegt den editierbaren Ablesezeitpunkt mit der aktuellen Zeit vor. Der

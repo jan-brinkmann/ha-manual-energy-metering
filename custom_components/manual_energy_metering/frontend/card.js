@@ -62,6 +62,8 @@ const TRANSLATIONS = {
     cameraUnavailable: "The rear camera could not be opened.",
     cameraNotSupported:
       "Direct camera access is not supported in this Home Assistant app.",
+    cameraSecureContextRequired:
+      "Direct camera access requires Home Assistant to be opened over HTTPS. The Android camera permission alone is not sufficient.",
     cameraCaptureFailed: "The photograph could not be captured.",
     photoHint:
       "The recognized value is shown for confirmation before saving. For uploaded photos, the capture time is used when available; the reading time remains editable.",
@@ -145,6 +147,8 @@ const TRANSLATIONS = {
     cameraUnavailable: "Die hintere Kamera konnte nicht geöffnet werden.",
     cameraNotSupported:
       "Der direkte Kamerazugriff wird in dieser Home-Assistant-App nicht unterstützt.",
+    cameraSecureContextRequired:
+      "Für den direkten Kamerazugriff muss Home Assistant über HTTPS geöffnet sein. Die Android-Kameraberechtigung allein reicht nicht aus.",
     cameraCaptureFailed: "Das Foto konnte nicht aufgenommen werden.",
     photoHint:
       "Der erkannte Wert wird vor dem Speichern zur Bestätigung angezeigt. Bei hochgeladenen Fotos wird, falls vorhanden, der Aufnahmezeitpunkt verwendet und bleibt editierbar.",
@@ -810,19 +814,13 @@ class ManualEnergyMeteringCard extends HTMLElement {
   }
 
   async _requestRearCameraStream() {
-    const mediaDevices = navigator.mediaDevices;
-    if (!mediaDevices?.getUserMedia) {
-      const error = new Error(this._t.cameraNotSupported);
-      error.code = "camera_not_supported";
-      throw error;
-    }
     const video = {
       facingMode: { exact: "environment" },
       width: { ideal: 3840 },
       height: { ideal: 2160 },
     };
     try {
-      return await mediaDevices.getUserMedia({ video, audio: false });
+      return await this._getUserMedia({ video, audio: false });
     } catch (error) {
       if (
         error?.name !== "OverconstrainedError" &&
@@ -830,7 +828,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
       ) {
         throw error;
       }
-      return mediaDevices.getUserMedia({
+      return this._getUserMedia({
         video: {
           ...video,
           facingMode: { ideal: "environment" },
@@ -838,6 +836,29 @@ class ManualEnergyMeteringCard extends HTMLElement {
         audio: false,
       });
     }
+  }
+
+  _getUserMedia(constraints) {
+    if (navigator.mediaDevices?.getUserMedia) {
+      return navigator.mediaDevices.getUserMedia(constraints);
+    }
+    const legacyGetUserMedia =
+      navigator.getUserMedia ||
+      navigator.webkitGetUserMedia ||
+      navigator.mozGetUserMedia;
+    if (legacyGetUserMedia) {
+      return new Promise((resolve, reject) =>
+        legacyGetUserMedia.call(navigator, constraints, resolve, reject)
+      );
+    }
+
+    const error = new Error(this._t.cameraNotSupported);
+    if (window.isSecureContext === false) {
+      error.code = "camera_insecure_context";
+    } else {
+      error.code = "camera_not_supported";
+    }
+    return Promise.reject(error);
   }
 
   _attachCameraStream() {
@@ -960,6 +981,9 @@ class ManualEnergyMeteringCard extends HTMLElement {
   }
 
   _cameraErrorMessage(error) {
+    if (error?.code === "camera_insecure_context") {
+      return this._t.cameraSecureContextRequired;
+    }
     if (error?.code === "camera_not_supported") {
       return this._t.cameraNotSupported;
     }

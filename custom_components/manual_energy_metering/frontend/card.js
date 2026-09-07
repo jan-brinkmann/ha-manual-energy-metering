@@ -33,6 +33,7 @@ const METER_ICONS = {
 };
 
 const DEFAULT_CONFIG = {
+  prefill_digits: 0,
   show_name: true,
   show_last_reading: true,
   show_last_reading_timestamp: true,
@@ -82,6 +83,7 @@ const TRANSLATIONS = {
     imageProcessingFailed: "The image could not be prepared for recognition.",
     editor: {
       entity: "Meter entity",
+      prefill_digits: "Number of digits prefilled from last reading",
       show_name: "Show meter name",
       show_last_reading: "Show last reading",
       show_last_reading_timestamp: "Show last reading date",
@@ -157,6 +159,7 @@ const TRANSLATIONS = {
       "Das Bild konnte nicht für die Erkennung vorbereitet werden.",
     editor: {
       entity: "Zählerentität",
+      prefill_digits: "Anzahl vorausgefüllter Ziffern",
       show_name: "Zählername anzeigen",
       show_last_reading: "Letzten Zählerstand anzeigen",
       show_last_reading_timestamp: "Letztes Ablesedatum anzeigen",
@@ -198,7 +201,17 @@ function languageFor(hass) {
 }
 
 function normalizeConfig(config) {
-  return { ...DEFAULT_CONFIG, ...config };
+  const normalized = { ...DEFAULT_CONFIG, ...config };
+  const rawPrefillDigits = normalized.prefill_digits;
+  const prefillDigits =
+    typeof rawPrefillDigits === "string" && rawPrefillDigits.trim() !== ""
+      ? Number(rawPrefillDigits)
+      : rawPrefillDigits;
+  normalized.prefill_digits =
+    Number.isSafeInteger(prefillDigits) && prefillDigits >= 0
+      ? prefillDigits
+      : 0;
+  return normalized;
 }
 
 class ManualEnergyMeteringCardEditor extends HTMLElement {
@@ -237,6 +250,7 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
     form.hass = this._hass;
     form.data = {
       entity: this._config.entity,
+      prefill_digits: this._config.prefill_digits,
       show_name: this._config.show_name,
       show_last_reading: this._config.show_last_reading,
       show_last_reading_timestamp: this._config.show_last_reading_timestamp,
@@ -252,6 +266,10 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
             filter: [{ integration: DOMAIN, domain: "sensor" }],
           },
         },
+      },
+      {
+        name: "prefill_digits",
+        selector: { number: { min: 0, step: 1, mode: "box" } },
       },
       { name: "show_name", selector: { boolean: {} } },
       { name: "show_last_reading", selector: { boolean: {} } },
@@ -294,6 +312,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._formValue = "";
+    this._valueDirty = false;
     this._formTimestamp = "";
     this._timestampDirty = false;
     this._busy = false;
@@ -314,12 +333,13 @@ class ManualEnergyMeteringCard extends HTMLElement {
     const previousEntity = this._config?.entity;
     this._config = normalizeConfig(config);
     if (previousEntity && previousEntity !== this._config.entity) {
-      this._resetForm();
       this._lastResult = undefined;
+      this._resetForm();
       this._message = undefined;
       this._resetHistoryLink();
     }
     this._ensureTimestamp();
+    this._ensurePrefilledValue();
     this._render();
     this._resolveHistoryLink();
   }
@@ -339,6 +359,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
       this._formTimestamp = "";
     }
     this._ensureTimestamp();
+    this._ensurePrefilledValue();
     this._resolveHistoryLink();
     if (
       !this.shadowRoot.firstElementChild ||
@@ -352,6 +373,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
 
   connectedCallback() {
     this._ensureTimestamp();
+    this._ensurePrefilledValue();
     this._render();
   }
 
@@ -399,8 +421,52 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  _ensurePrefilledValue() {
+    if (!this._valueDirty) {
+      this._formValue = this._prefilledReading();
+    }
+  }
+
+  _prefilledReading() {
+    const digitLimit = this._config?.prefill_digits || 0;
+    const lastReading = this._stateData().lastReading;
+    const numericReading = Number(lastReading);
+    if (
+      !digitLimit ||
+      lastReading === null ||
+      lastReading === undefined ||
+      !Number.isFinite(numericReading) ||
+      numericReading < 0
+    ) {
+      return "";
+    }
+
+    const formatted = this._formatInputReading(numericReading);
+    const digitFormatter = new Intl.NumberFormat(this._locale, {
+      useGrouping: false,
+    });
+    const localizedDigits = new Set(
+      Array.from({ length: 10 }, (_value, digit) =>
+        digitFormatter.format(digit)
+      )
+    );
+    let result = "";
+    let digitCount = 0;
+    for (const character of formatted) {
+      if (digitCount >= digitLimit) {
+        break;
+      }
+      result += character;
+      if (localizedDigits.has(character)) {
+        digitCount += 1;
+      }
+    }
+    return digitCount ? result : "";
+  }
+
   _resetForm() {
-    this._formValue = "";
+    this._valueDirty = false;
+    this._formValue = this._prefilledReading();
     this._formTimestamp = this._hass
       ? this._formatInputTimestamp(new Date())
       : "";
@@ -529,6 +595,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
       );
     this.shadowRoot.querySelector("#value")?.addEventListener("input", (event) => {
       this._formValue = event.target.value;
+      this._valueDirty = true;
       this._message = undefined;
     });
     this.shadowRoot
@@ -905,6 +972,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
         this._recognitionStage = "completed";
       }
       this._formValue = this._formatInputReading(result.value);
+      this._valueDirty = true;
       this._formTimestamp = timestamp;
       this._timestampDirty = true;
       this._photoPreview = prepared.dataUrl;
@@ -1344,6 +1412,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     const rawValue = valueInput.value;
     const timestamp = timestampInput.value;
     this._formValue = rawValue;
+    this._valueDirty = true;
     this._formTimestamp = timestamp;
     this._timestampDirty = true;
 

@@ -26,6 +26,15 @@ from interpolation import (  # noqa: E402
     replace_reading,
     upsert_reading,
 )
+from vision import (  # noqa: E402
+    MAX_VISION_IMAGE_BYTES,
+    VisionError,
+    chat_completions_url,
+    normalize_vision_url,
+    recognition_request,
+    recognized_value,
+    validate_image,
+)
 
 
 class HourlyConsumptionTests(unittest.TestCase):
@@ -361,6 +370,110 @@ class PaginationTests(unittest.TestCase):
         )
 
 
+class VisionProtocolTests(unittest.TestCase):
+    """Verify safe OpenAI-compatible image requests and responses."""
+
+    def test_host_and_ollama_urls_are_normalized(self) -> None:
+        self.assertEqual(
+            normalize_vision_url("ollama:11434"), "http://ollama:11434"
+        )
+        self.assertEqual(
+            chat_completions_url("http://ollama:11434"),
+            "http://ollama:11434/v1/chat/completions",
+        )
+        self.assertEqual(
+            chat_completions_url("http://ollama:11434/v1"),
+            "http://ollama:11434/v1/chat/completions",
+        )
+        self.assertEqual(
+            chat_completions_url("https://provider.example/chat/completions"),
+            "https://provider.example/chat/completions",
+        )
+
+    def test_provider_url_rejects_credentials_query_and_invalid_port(self) -> None:
+        invalid_urls = (
+            "http://user:secret@ollama:11434",
+            "http://ollama:11434?token=secret",
+            "http://ollama:not-a-port",
+        )
+        for api_url in invalid_urls:
+            with self.subTest(api_url=api_url):
+                with self.assertRaises(VisionError):
+                    chat_completions_url(api_url)
+
+    def test_request_contains_only_prompt_and_image_content(self) -> None:
+        request = recognition_request(
+            "qwen2.5vl:7b",
+            "Read the meter and return JSON.",
+            "YWJj",
+            "image/jpeg",
+        )
+
+        self.assertEqual(request["model"], "qwen2.5vl:7b")
+        self.assertEqual(
+            request["messages"],
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Read the meter and return JSON.",
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/jpeg;base64,YWJj"
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+
+    def test_recognized_value_accepts_json_and_decimal_comma(self) -> None:
+        markdown = {
+            "choices": [
+                {"message": {"content": '```json\n{"value":"123.45"}\n```'}}
+            ]
+        }
+        decimal_comma = {
+            "choices": [{"message": {"content": '{"value":"12,5"}'}}]
+        }
+
+        self.assertEqual(recognized_value(markdown), 123.45)
+        self.assertEqual(recognized_value(decimal_comma), 12.5)
+
+    def test_unreadable_and_ambiguous_values_are_rejected(self) -> None:
+        unreadable = {
+            "choices": [{"message": {"content": '{"error":"unreadable"}'}}]
+        }
+        ambiguous = {
+            "choices": [{"message": {"content": '{"value":"1,234.5"}'}}]
+        }
+
+        with self.assertRaisesRegex(VisionError, "not recognized"):
+            recognized_value(unreadable)
+        with self.assertRaisesRegex(VisionError, "not numeric"):
+            recognized_value(ambiguous)
+
+    def test_image_validation_enforces_type_content_and_size(self) -> None:
+        validate_image(b"\xff\xd8\xffjpeg", "image/jpeg")
+        validate_image(b"\x89PNG\r\n\x1a\npng", "image/png")
+        validate_image(b"RIFF\x04\x00\x00\x00WEBP", "image/webp")
+        with self.assertRaisesRegex(VisionError, "Unsupported"):
+            validate_image(b"abc", "image/gif")
+        with self.assertRaisesRegex(VisionError, "empty"):
+            validate_image(b"", "image/jpeg")
+        with self.assertRaisesRegex(VisionError, "does not match"):
+            validate_image(b"not-a-jpeg", "image/jpeg")
+        with self.assertRaisesRegex(VisionError, "too large"):
+            validate_image(
+                b"\xff\xd8\xff" + b"x" * MAX_VISION_IMAGE_BYTES,
+                "image/jpeg",
+            )
+
+
 class IntegrationIdentityTests(unittest.TestCase):
     """Verify the canonical domain and its derived identifiers."""
 
@@ -432,6 +545,10 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertNotIn("Sekunden `00`", german)
         self.assertNotIn("localized decimal separator", english)
         self.assertNotIn("lokalisierte Dezimaltrennzeichen", german)
+        self.assertNotIn("1600 pixels", english)
+        self.assertNotIn("20 MiB", english)
+        self.assertNotIn("1600 Pixel", german)
+        self.assertNotIn("20 MiB", german)
 
     def test_readings_panel_replaces_the_options_flow(self) -> None:
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
@@ -517,6 +634,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("show_name", card)
         self.assertIn("show_last_reading", card)
         self.assertIn("show_last_reading_timestamp", card)
+        self.assertIn("show_photo_buttons", card)
         self.assertIn("show_history_link", card)
         self.assertIn("meterType: attributes.meter_type", card)
         self.assertIn("_renderMeterTypeIcon(data.meterType)", card)
@@ -536,6 +654,113 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("${parts.minute}:00", card)
         self.assertIn('type: `${DOMAIN}/card/add`', card)
         self.assertIn("useGrouping: false", card)
+
+    def test_photo_recognition_is_independent_per_meter_and_confirmed(self) -> None:
+        constants = (MODULE_DIR / "const.py").read_text()
+        config_flow = (MODULE_DIR / "config_flow.py").read_text()
+        init = (MODULE_DIR / "__init__.py").read_text()
+        sensor = (MODULE_DIR / "sensor.py").read_text()
+        websocket_api = (MODULE_DIR / "websocket_api.py").read_text()
+        vision_http = (MODULE_DIR / "vision_http.py").read_text()
+        vision = (MODULE_DIR / "vision.py").read_text()
+        card = (MODULE_DIR / "frontend" / "card.js").read_text()
+        english_strings = json.loads((MODULE_DIR / "strings.json").read_text())
+        german_strings = json.loads(
+            (MODULE_DIR / "translations" / "de.json").read_text()
+        )
+
+        self.assertIn('DEFAULT_VISION_MODEL = "qwen2.5vl:7b"', constants)
+        self.assertIn("DEFAULT_VISION_COMPRESS_IMAGE = True", constants)
+        self.assertIn("DEFAULT_VISION_PROMPT", constants)
+        self.assertNotIn("DATA_VISION_CONFIG", constants)
+        self.assertIn("VERSION = 6", config_flow)
+        self.assertIn("async_step_vision", config_flow)
+        self.assertIn("async_step_reconfigure", config_flow)
+        self.assertIn("TextSelectorType.PASSWORD", config_flow)
+        self.assertIn("CONF_VISION_COMPRESS_IMAGE", config_flow)
+        self.assertIn("data_updates={**entry.data, **vision_data}", config_flow)
+        self.assertIn("async_migrate_entry", init)
+        self.assertIn(
+            "data[CONF_VISION_COMPRESS_IMAGE] = DEFAULT_VISION_COMPRESS_IMAGE",
+            init,
+        )
+        self.assertIn("data[CONF_VISION_MODEL] = DEFAULT_VISION_MODEL", init)
+        self.assertIn("data[CONF_VISION_PROMPT] = DEFAULT_VISION_PROMPT", init)
+        self.assertNotIn("VisionConfigStore", init)
+        self.assertIn("data = meter.entry.data", vision)
+        self.assertIn("PROVIDER_CONNECT_TIMEOUT_SECONDS = 5", vision)
+        self.assertIn("PROVIDER_RESPONSE_TIMEOUT_SECONDS = 90", vision)
+        self.assertIn("sock_connect=PROVIDER_CONNECT_TIMEOUT_SECONDS", vision)
+        self.assertIn("sock_read=PROVIDER_RESPONSE_TIMEOUT_SECONDS", vision)
+        self.assertIn('"vision_provider_timeout"', vision)
+        self.assertIn("VisionProgressCallback", vision)
+        self.assertIn("ProgressBytesPayload", vision)
+        self.assertIn('await report_progress("connecting")', vision)
+        self.assertIn('await report_progress("request_sent")', vision)
+        self.assertIn('await report_progress("response_received")', vision)
+        self.assertIn('await report_progress("completed")', vision)
+        self.assertIn('stream.content_type = "text/event-stream"', vision_http)
+        self.assertIn('"event": "progress"', vision_http)
+        self.assertIn('"event": "error"', vision_http)
+        self.assertIn('"event": "result"', vision_http)
+        self.assertIn("progress=send_progress", vision_http)
+        self.assertIn("VISION_REQUEST_TIMEOUT_MS = 120 * 1000", card)
+        self.assertIn("RECOGNITION_STAGES", card)
+        self.assertIn('"connecting"', card)
+        self.assertIn('"request_sent"', card)
+        self.assertIn('"response_received"', card)
+        self.assertIn('"completed"', card)
+        self.assertIn("_renderRecognitionProgress()", card)
+        self.assertIn("response.body.getReader()", card)
+        self.assertIn('Accept: "text/event-stream, application/json"', card)
+        self.assertIn("new AbortController()", card)
+        self.assertIn("controller.signal.aborted", card)
+        self.assertIn("window.clearTimeout(timeoutId)", card)
+        self.assertNotIn("last_reading_timestamp", vision)
+        self.assertNotIn("meter_type", vision)
+        self.assertIn('ATTR_VISION_CONFIGURED = "vision_configured"', constants)
+        self.assertIn("ATTR_VISION_CONFIGURED", sensor)
+        self.assertIn("CONF_VISION_COMPRESS_IMAGE", sensor)
+        self.assertNotIn("WS_CARD_RECOGNIZE", websocket_api)
+        self.assertIn("permissions.check_entity", websocket_api)
+        self.assertIn("permissions.check_entity", vision_http)
+        self.assertIn("request.content.iter_chunked", vision_http)
+        self.assertIn('request.headers.get("Content-Encoding"', vision_http)
+        self.assertIn("bytes(image)", vision_http)
+        self.assertIn("hass.http.register_view(VisionRecognitionView)", init)
+        self.assertIn('capture="environment"', card)
+        self.assertIn('icon="mdi:image-plus"', card)
+        self.assertIn("canvas.toBlob", card)
+        self.assertIn("if (compressImage)", card)
+        self.assertIn("attributes.vision_compress_image !== false", card)
+        self.assertEqual(card.count('data-read-photo-timestamp="true"'), 1)
+        self.assertIn("file.arrayBuffer()", card)
+        self.assertIn("dateTimeOriginal: 0x9003", card)
+        self.assertIn("dateTimeDigitized: 0x9004", card)
+        self.assertIn("dateTime: 0x0132", card)
+        self.assertIn("_findExifTiff(view)", card)
+        self.assertIn("_formatExifDateTime(metadata)", card)
+        self.assertIn("photoTimestamp || currentTimestamp", card)
+        self.assertIn("this._formTimestamp = photoTimestamp", card)
+        self.assertNotIn("pad(second)", card)
+        self.assertNotIn("parts.second", card)
+        self.assertIn("file: uploadFile", card)
+        self.assertIn("body: prepared.file", card)
+        self.assertIn("this._hass.fetchWithAuth", card)
+        self.assertIn("this._formValue = this._formatInputReading", card)
+        self.assertIn("this._formTimestamp = timestamp", card)
+        self.assertNotIn("async_add_reading", vision)
+        for step_id in ("vision", "reconfigure"):
+            english_help = english_strings["config"]["step"][step_id][
+                "data_description"
+            ]["vision_compress_image"]
+            german_help = german_strings["config"]["step"][step_id][
+                "data_description"
+            ]["vision_compress_image"]
+            self.assertIn("1600", english_help)
+            self.assertIn("20 MiB", english_help)
+            self.assertIn("1600", german_help)
+            self.assertIn("20 MiB", german_help)
 
 
 if __name__ == "__main__":

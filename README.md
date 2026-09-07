@@ -143,6 +143,32 @@ The **Manual Energy Metering** dashboard card lets you enter a reading directly
 from a dashboard. Add it through **Edit dashboard > Add card > Manual Energy
 Metering** and select the meter entity.
 
+The card editor can show or hide the photo buttons independently of the other
+card content and independently of whether a provider is configured.
+
+### Photo recognition
+
+Photo recognition is configured separately for each meter. Configure it while
+creating the meter or later under **Settings > Devices & services > Manual
+Energy Metering > Reconfigure**.
+
+Enter the address of an OpenAI-compatible vision provider, such as
+`http://192.168.1.10:11434` for Ollama, and an API token if the provider requires
+one. Model and prompt are prefilled and can be adjusted for each meter. Image
+compression can also be enabled or disabled per meter.
+
+Use **Take photo** or **Upload photo** in the dashboard card. The integration
+sends the image to the configured provider but does not store it permanently.
+The provider may apply its own storage and privacy policy. A compact progress
+bar shows the current recognition stage and marks the last reached stage if an
+error occurs.
+
+The recognized reading and reading time are shown for confirmation. For an
+uploaded file, the capture date and time from its image metadata are used when
+available; otherwise the current time is used. Correct the values if necessary
+and select **Add reading** to save the record. Without a configured provider,
+all manual functions remain available.
+
 After installing or updating the integration, fully restart Home Assistant and
 reload the browser if the card is not shown in the card picker.
 

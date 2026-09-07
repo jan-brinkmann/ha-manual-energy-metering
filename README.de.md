@@ -151,6 +151,35 @@ Mit der Dashboard-Karte **Manuelle Energiemessung** kannst du einen Zählerstand
 direkt im Dashboard eintragen. Füge sie über **Dashboard bearbeiten > Karte
 hinzufügen > Manuelle Energiemessung** hinzu und wähle die Zählerentität.
 
+Im Karteneditor können die Foto-Schaltflächen unabhängig vom übrigen
+Karteninhalt und unabhängig von einer Provider-Konfiguration ein- oder
+ausgeblendet werden.
+
+### Fotoerkennung
+
+Die Fotoerkennung wird für jeden Zähler separat konfiguriert. Richte sie beim
+Anlegen des Zählers oder später unter **Einstellungen > Geräte & Dienste >
+Manuelle Energiemessung > Neu konfigurieren** ein.
+
+Trage die Adresse eines OpenAI-kompatiblen Vision-Providers ein, zum Beispiel
+`http://192.168.1.10:11434` für Ollama, sowie ein API-Token, falls der Provider
+eines benötigt. Modell und Prompt sind vorausgefüllt und können für jeden Zähler
+angepasst werden. Auch die Bildkomprimierung lässt sich pro Zähler ein- oder
+ausschalten.
+
+Verwende in der Dashboard-Karte **Foto aufnehmen** oder **Foto hochladen**. Die
+Integration sendet das Bild an den konfigurierten Provider, speichert es aber
+nicht dauerhaft. Für den Provider können eigene Speicher- und Datenschutzregeln
+gelten. Ein kompakter Fortschrittsbalken zeigt den aktuellen Schritt und markiert
+bei einem Fehler den zuletzt erreichten Schritt.
+
+Der erkannte Zählerstand und der Ablesezeitpunkt werden zur Bestätigung
+angezeigt. Bei einer hochgeladenen Datei werden, falls vorhanden, Aufnahmedatum
+und -uhrzeit aus den Bildmetadaten verwendet, andernfalls die aktuelle Zeit.
+Korrigiere die Werte bei Bedarf und wähle **Zählerstand eintragen**, um den
+Datensatz zu speichern. Ohne konfigurierten Provider bleiben alle manuellen
+Funktionen verfügbar.
+
 Starte Home Assistant nach Installation oder Aktualisierung vollständig neu und
 lade den Browser neu, falls die Karte nicht in der Kartenauswahl erscheint.
 

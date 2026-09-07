@@ -23,7 +23,12 @@ from .const import (
     ATTR_VALUE,
     ATTR_READING_COUNT,
     ATTR_STATISTIC_ID,
+    ATTR_VISION_CONFIGURED,
     CONF_METER_TYPE,
+    CONF_VISION_API_URL,
+    CONF_VISION_COMPRESS_IMAGE,
+    CONF_VISION_MODEL,
+    DEFAULT_VISION_COMPRESS_IMAGE,
     DOMAIN,
     MAX_RECENT_READINGS,
     METER_TYPE_WATER,
@@ -90,6 +95,15 @@ class ManualEnergyMeteringSensor(SensorEntity):
                 for reading in self._meter.readings[-MAX_RECENT_READINGS:]
             ],
             ATTR_STATISTIC_ID: self._meter.statistic_id,
+            ATTR_VISION_CONFIGURED: bool(
+                str(self._meter.entry.data.get(CONF_VISION_API_URL, "")).strip()
+                and str(
+                    self._meter.entry.data.get(CONF_VISION_MODEL, "")
+                ).strip()
+            ),
+            CONF_VISION_COMPRESS_IMAGE: self._meter.entry.data.get(
+                CONF_VISION_COMPRESS_IMAGE, DEFAULT_VISION_COMPRESS_IMAGE
+            ),
         }
 
     async def async_added_to_hass(self) -> None:

@@ -53,6 +53,16 @@ const TRANSLATIONS = {
     completeHistory: "View complete meter reading history",
     takePhoto: "Take photo",
     uploadPhoto: "Upload photo",
+    openCamera: "Opening rear camera...",
+    capturePhoto: "Take photo",
+    cancelCamera: "Cancel",
+    cameraDialog: "Take a meter photograph",
+    cameraPermissionDenied:
+      "Camera access was denied. Allow camera access for Home Assistant and try again.",
+    cameraUnavailable: "The rear camera could not be opened.",
+    cameraNotSupported:
+      "Direct camera access is not supported in this Home Assistant app.",
+    cameraCaptureFailed: "The photograph could not be captured.",
     photoHint:
       "The recognized value is shown for confirmation before saving. For uploaded photos, the capture time is used when available; the reading time remains editable.",
     photoNotConfigured:
@@ -126,6 +136,16 @@ const TRANSLATIONS = {
     completeHistory: "Vollständige Zählerstandshistorie anzeigen",
     takePhoto: "Foto aufnehmen",
     uploadPhoto: "Foto hochladen",
+    openCamera: "Hintere Kamera wird geöffnet...",
+    capturePhoto: "Foto aufnehmen",
+    cancelCamera: "Abbrechen",
+    cameraDialog: "Zähler fotografieren",
+    cameraPermissionDenied:
+      "Der Kamerazugriff wurde verweigert. Erlaube Home Assistant den Kamerazugriff und versuche es erneut.",
+    cameraUnavailable: "Die hintere Kamera konnte nicht geöffnet werden.",
+    cameraNotSupported:
+      "Der direkte Kamerazugriff wird in dieser Home-Assistant-App nicht unterstützt.",
+    cameraCaptureFailed: "Das Foto konnte nicht aufgenommen werden.",
     photoHint:
       "Der erkannte Wert wird vor dem Speichern zur Bestätigung angezeigt. Bei hochgeladenen Fotos wird, falls vorhanden, der Aufnahmezeitpunkt verwendet und bleibt editierbar.",
     photoNotConfigured:
@@ -324,6 +344,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._historyEntity = undefined;
     this._historyUrl = undefined;
     this._historyLoading = false;
+    this._cameraStream = undefined;
+    this._cameraStarting = false;
+    this._cameraOpen = false;
+    this._cameraReady = false;
+    this._cameraRequestId = 0;
   }
 
   setConfig(config) {
@@ -332,6 +357,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
     const previousEntity = this._config?.entity;
     this._config = normalizeConfig(config);
+    if (
+      this._config.show_photo_buttons === false ||
+      (previousEntity && previousEntity !== this._config.entity)
+    ) {
+      this._closeCamera(false);
+    }
     if (previousEntity && previousEntity !== this._config.entity) {
       this._lastResult = undefined;
       this._resetForm();
@@ -375,6 +406,10 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._ensureTimestamp();
     this._ensurePrefilledValue();
     this._render();
+  }
+
+  disconnectedCallback() {
+    this._closeCamera(false);
   }
 
   getCardSize() {
@@ -507,6 +542,9 @@ class ManualEnergyMeteringCard extends HTMLElement {
     if (!this._config) {
       return;
     }
+    if (this._cameraOpen) {
+      this._cameraReady = false;
+    }
     const t = this._t;
     const data = this._stateData();
     const showName = this._config.show_name;
@@ -524,7 +562,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
           hasEntity,
           available,
           data.visionConfigured
-        )}${this._renderRecognitionProgress()}${this._renderPhotoPreview()}`
+        )}${this._renderCameraCapture()}${this._renderRecognitionProgress()}${this._renderPhotoPreview()}`
       : "";
 
     this.shadowRoot.innerHTML = `
@@ -593,6 +631,22 @@ class ManualEnergyMeteringCard extends HTMLElement {
       .forEach((input) =>
         input.addEventListener("change", (event) => this._recognizePhoto(event))
       );
+    this.shadowRoot
+      .querySelector("#take-photo")
+      ?.addEventListener("click", () => this._takePhoto());
+    this.shadowRoot
+      .querySelector("#capture-camera-photo")
+      ?.addEventListener("click", () => this._captureCameraPhoto());
+    this.shadowRoot
+      .querySelector("#cancel-camera")
+      ?.addEventListener("click", () => this._closeCamera());
+    this.shadowRoot
+      .querySelector(".camera-overlay")
+      ?.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          this._closeCamera();
+        }
+      });
     this.shadowRoot.querySelector("#value")?.addEventListener("input", (event) => {
       this._formValue = event.target.value;
       this._valueDirty = true;
@@ -605,22 +659,37 @@ class ManualEnergyMeteringCard extends HTMLElement {
         this._timestampDirty = true;
         this._message = undefined;
       });
+    this._attachCameraStream();
   }
 
   _renderPhotoControls(hasEntity, available, visionConfigured) {
     const disabled =
-      !hasEntity || !available || !visionConfigured || this._busy;
+      !hasEntity ||
+      !available ||
+      !visionConfigured ||
+      this._busy ||
+      this._cameraStarting ||
+      this._cameraOpen;
     const inputAttributes = `class="photo-input" type="file" accept="image/*" ${
       disabled ? "disabled" : ""
     }`;
     return `
       <section class="photo-capture">
         <div class="photo-buttons">
-          <label class="photo-button ${disabled ? "disabled" : ""}">
-            <input ${inputAttributes} capture="environment" />
+          <button
+            id="take-photo"
+            class="photo-button"
+            type="button"
+            ${disabled ? "disabled" : ""}
+          >
             <ha-icon icon="mdi:camera"></ha-icon>
             <span>${this._escape(this._t.takePhoto)}</span>
-          </label>
+          </button>
+          <input
+            id="camera-input"
+            ${inputAttributes}
+            capture="environment"
+          />
           <label class="photo-button ${disabled ? "disabled" : ""}">
             <input ${inputAttributes} data-read-photo-timestamp="true" />
             <ha-icon icon="mdi:image-plus"></ha-icon>
@@ -632,6 +701,280 @@ class ManualEnergyMeteringCard extends HTMLElement {
         )}</p>
       </section>
     `;
+  }
+
+  _renderCameraCapture() {
+    if (!this._cameraStarting && !this._cameraOpen) {
+      return "";
+    }
+    return `
+      <section
+        class="camera-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="${this._escapeAttribute(this._t.cameraDialog)}"
+        tabindex="-1"
+      >
+        <div class="camera-panel">
+          <div class="camera-viewport">
+            ${
+              this._cameraOpen
+                ? '<video id="camera-preview" autoplay muted playsinline></video>'
+                : `<div class="camera-starting">
+                    <ha-icon icon="mdi:camera"></ha-icon>
+                    <span>${this._escape(this._t.openCamera)}</span>
+                  </div>`
+            }
+          </div>
+          <div class="camera-actions">
+            ${
+              this._cameraOpen
+                ? `<button
+                    id="capture-camera-photo"
+                    type="button"
+                    ${this._cameraReady ? "" : "disabled"}
+                  >
+                    <ha-icon icon="mdi:camera-iris"></ha-icon>
+                    <span>${this._escape(this._t.capturePhoto)}</span>
+                  </button>`
+                : ""
+            }
+            <button id="cancel-camera" class="secondary-button" type="button">
+              <ha-icon icon="mdi:close"></ha-icon>
+              <span>${this._escape(this._t.cancelCamera)}</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  _takePhoto() {
+    if (this._busy || this._cameraStarting || this._cameraOpen) {
+      return;
+    }
+    if (!this._isAndroidCompanionApp()) {
+      this.shadowRoot.querySelector("#camera-input")?.click();
+      return;
+    }
+    this._openCamera();
+  }
+
+  _isAndroidCompanionApp() {
+    const hasNativeBridge =
+      typeof window.externalApp !== "undefined" ||
+      typeof window.externalAppV2 !== "undefined";
+    return /Android/i.test(navigator.userAgent || "") && hasNativeBridge;
+  }
+
+  async _openCamera() {
+    const entityId = this._config?.entity;
+    const requestId = ++this._cameraRequestId;
+    this._cameraStarting = true;
+    this._cameraOpen = false;
+    this._cameraReady = false;
+    this._message = undefined;
+    this._render();
+    this.shadowRoot.querySelector(".camera-overlay")?.focus();
+
+    let stream;
+    try {
+      stream = await this._requestRearCameraStream();
+    } catch (error) {
+      if (requestId !== this._cameraRequestId) {
+        return;
+      }
+      this._cameraStarting = false;
+      this._message = {
+        text: this._cameraErrorMessage(error),
+        type: "error",
+      };
+      this._render();
+      return;
+    }
+
+    if (
+      requestId !== this._cameraRequestId ||
+      !this.isConnected ||
+      entityId !== this._config?.entity
+    ) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+
+    this._cameraStream = stream;
+    this._cameraStarting = false;
+    this._cameraOpen = true;
+    this._render();
+    this.shadowRoot.querySelector(".camera-overlay")?.focus();
+  }
+
+  async _requestRearCameraStream() {
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.getUserMedia) {
+      const error = new Error(this._t.cameraNotSupported);
+      error.code = "camera_not_supported";
+      throw error;
+    }
+    const video = {
+      facingMode: { exact: "environment" },
+      width: { ideal: 3840 },
+      height: { ideal: 2160 },
+    };
+    try {
+      return await mediaDevices.getUserMedia({ video, audio: false });
+    } catch (error) {
+      if (
+        error?.name !== "OverconstrainedError" &&
+        error?.name !== "ConstraintNotSatisfiedError"
+      ) {
+        throw error;
+      }
+      return mediaDevices.getUserMedia({
+        video: {
+          ...video,
+          facingMode: { ideal: "environment" },
+        },
+        audio: false,
+      });
+    }
+  }
+
+  _attachCameraStream() {
+    const stream = this._cameraStream;
+    const video = this.shadowRoot.querySelector("#camera-preview");
+    if (!stream || !this._cameraOpen || !video) {
+      return;
+    }
+    video.srcObject = stream;
+    const isCurrentVideo = () =>
+      this._cameraStream === stream &&
+      this.shadowRoot.querySelector("#camera-preview") === video;
+    const markReady = () => {
+      if (!isCurrentVideo() || !video.videoWidth || !video.videoHeight) {
+        return;
+      }
+      this._cameraReady = true;
+      const captureButton = this.shadowRoot.querySelector(
+        "#capture-camera-photo"
+      );
+      if (captureButton) {
+        captureButton.disabled = false;
+      }
+    };
+    if (video.readyState >= 1) {
+      markReady();
+    } else {
+      video.addEventListener("loadedmetadata", markReady, { once: true });
+    }
+    video.play().catch(() => {
+      if (!isCurrentVideo()) {
+        return;
+      }
+      this._closeCamera(false);
+      this._message = {
+        text: this._t.cameraUnavailable,
+        type: "error",
+      };
+      this._render();
+    });
+
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.onended = () => {
+        if (this._cameraStream !== stream) {
+          return;
+        }
+        this._closeCamera(false);
+        this._message = {
+          text: this._t.cameraUnavailable,
+          type: "error",
+        };
+        this._render();
+      };
+    }
+  }
+
+  async _captureCameraPhoto() {
+    if (!this._cameraOpen || !this._cameraReady || this._busy) {
+      return;
+    }
+    const video = this.shadowRoot.querySelector("#camera-preview");
+    const captureButton = this.shadowRoot.querySelector(
+      "#capture-camera-photo"
+    );
+    if (captureButton) {
+      captureButton.disabled = true;
+    }
+
+    try {
+      if (!video?.videoWidth || !video.videoHeight) {
+        throw new Error(this._t.cameraCaptureFailed);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        throw new Error(this._t.cameraCaptureFailed);
+      }
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", 0.95)
+      );
+      if (!blob) {
+        throw new Error(this._t.cameraCaptureFailed);
+      }
+      const file = new File([blob], `meter-reading-${Date.now()}.jpg`, {
+        type: "image/jpeg",
+        lastModified: Date.now(),
+      });
+      this._closeCamera(false);
+      await this._recognizeFile(file, false);
+    } catch (error) {
+      this._closeCamera(false);
+      this._message = {
+        text: this._t.cameraCaptureFailed,
+        type: "error",
+      };
+      this._render();
+    }
+  }
+
+  _closeCamera(render = true) {
+    this._cameraRequestId += 1;
+    const stream = this._cameraStream;
+    this._cameraStream = undefined;
+    this._cameraStarting = false;
+    this._cameraOpen = false;
+    this._cameraReady = false;
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        track.onended = null;
+        track.stop();
+      });
+    }
+    if (render && this.isConnected) {
+      this._render();
+    }
+  }
+
+  _cameraErrorMessage(error) {
+    if (error?.code === "camera_not_supported") {
+      return this._t.cameraNotSupported;
+    }
+    if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
+      return this._t.cameraPermissionDenied;
+    }
+    if (
+      error?.name === "NotFoundError" ||
+      error?.name === "OverconstrainedError" ||
+      error?.name === "ConstraintNotSatisfiedError" ||
+      error?.name === "NotReadableError"
+    ) {
+      return this._t.cameraUnavailable;
+    }
+    return this._t.cameraUnavailable;
   }
 
   _renderRecognitionProgress() {
@@ -906,14 +1249,18 @@ class ManualEnergyMeteringCard extends HTMLElement {
   async _recognizePhoto(event) {
     const input = event.target;
     const file = input.files?.[0];
+    const readPhotoTimestamp = input.dataset.readPhotoTimestamp === "true";
     input.value = "";
+    await this._recognizeFile(file, readPhotoTimestamp);
+  }
+
+  async _recognizeFile(file, readPhotoTimestamp = false) {
     if (!file || this._busy || !this._config.entity) {
       return;
     }
 
     const entityId = this._config.entity;
     const currentTimestamp = this._formatInputTimestamp(new Date());
-    const readPhotoTimestamp = input.dataset.readPhotoTimestamp === "true";
     this._photoPreview = undefined;
     this._recognitionStage = "preparing";
     this._recognitionFailed = false;
@@ -1626,6 +1973,74 @@ class ManualEnergyMeteringCard extends HTMLElement {
         opacity: 0;
         pointer-events: none;
       }
+      .camera-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: grid;
+        place-items: center;
+        padding: max(18px, env(safe-area-inset-top))
+          max(18px, env(safe-area-inset-right))
+          max(18px, env(safe-area-inset-bottom))
+          max(18px, env(safe-area-inset-left));
+        overflow: hidden;
+        overscroll-behavior: contain;
+        background: rgba(0, 0, 0, 0.86);
+        outline: none;
+      }
+      .camera-panel {
+        display: grid;
+        gap: 14px;
+        width: min(720px, 100%);
+        max-height: 100%;
+        padding: 14px;
+        border: 1px solid color-mix(in srgb, white 18%, transparent);
+        border-radius: 16px;
+        background: var(--card-background-color);
+        box-shadow: 0 18px 52px rgba(0, 0, 0, 0.45);
+      }
+      .camera-viewport {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        height: min(70vh, 720px);
+        height: min(70dvh, 720px);
+        overflow: hidden;
+        border-radius: 11px;
+        background: #050505;
+      }
+      .camera-viewport video {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .camera-starting {
+        display: grid;
+        justify-items: center;
+        gap: 12px;
+        padding: 24px;
+        color: #fff;
+        text-align: center;
+        font-weight: 650;
+      }
+      .camera-starting ha-icon {
+        --mdc-icon-size: 42px;
+        animation: camera-pulse 1.2s ease-in-out infinite;
+      }
+      .camera-actions {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+      }
+      .camera-actions .secondary-button {
+        border: 1px solid var(--divider-color);
+        color: var(--primary-text-color);
+        background: var(--secondary-background-color);
+      }
+      @keyframes camera-pulse {
+        50% { opacity: 0.42; }
+      }
       .photo-capture p, .photo-preview p {
         margin: 8px 0 0;
         color: var(--secondary-text-color);
@@ -1799,7 +2214,8 @@ class ManualEnergyMeteringCard extends HTMLElement {
       }
       .history-link a:hover { text-decoration: underline; }
       @media (prefers-reduced-motion: reduce) {
-        .recognition-segment.current { animation: none; }
+        .recognition-segment.current,
+        .camera-starting ha-icon { animation: none; }
       }
       @media (max-width: 620px) {
         .content { padding: 18px; }

@@ -105,6 +105,11 @@ Read-only inspection of GitHub information is allowed when needed.
 
 Codex MUST NOT create or modify releases.
 
+Codex MUST NOT change or increment the integration version unless the user
+explicitly requests that exact version change in the current task. Do not infer
+a version change from feature work, bug fixes, documentation changes, release
+preparation, or frontend cache busting.
+
 In particular, Codex must not:
 
 - create release tags

@@ -777,6 +777,9 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._cameraStarting = true;
     this._cameraOpen = false;
     this._cameraReady = false;
+    this._photoPreview = undefined;
+    this._recognitionStage = undefined;
+    this._recognitionFailed = false;
     this._message = undefined;
     this._render();
     this.shadowRoot.querySelector(".camera-overlay")?.focus();
@@ -943,6 +946,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
       const blobPromise = new Promise((resolve) =>
         canvas.toBlob(resolve, "image/jpeg", 0.95)
       );
+      this._photoPreview = undefined;
+      this._recognitionStage = "preparing";
+      this._recognitionFailed = false;
+      this._busy = true;
+      this._message = { text: this._t.recognizing, type: "info" };
       this._closeCamera();
       await new Promise((resolve) =>
         window.requestAnimationFrame(() =>
@@ -957,8 +965,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
         type: "image/jpeg",
         lastModified: Date.now(),
       });
+      this._busy = false;
       await this._recognizeFile(file, false);
     } catch (error) {
+      this._busy = false;
+      this._recognitionFailed = true;
       this._closeCamera(false);
       this._message = {
         text: this._t.cameraCaptureFailed,

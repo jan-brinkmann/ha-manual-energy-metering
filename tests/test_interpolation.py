@@ -753,10 +753,24 @@ class IntegrationIdentityTests(unittest.TestCase):
             card.index("  async _captureCameraPhoto()") :
             card.index("  _closeCamera(render = true)")
         ]
+        open_camera_method = card[
+            card.index("  async _openCamera()") :
+            card.index("  async _requestRearCameraStream()")
+        ]
         self.assertLess(
             capture_method.index("this._closeCamera();"),
             capture_method.index("const blob = await blobPromise;"),
         )
+        self.assertLess(
+            capture_method.index('this._recognitionStage = "preparing";'),
+            capture_method.index("this._closeCamera();"),
+        )
+        self.assertLess(
+            capture_method.index("this._busy = true;"),
+            capture_method.index("this._closeCamera();"),
+        )
+        self.assertIn("this._busy = false;", capture_method)
+        self.assertIn("this._recognitionStage = undefined;", open_camera_method)
         self.assertIn("video.srcObject = null", card)
         self.assertIn("window.requestAnimationFrame", capture_method)
         self.assertEqual(card.count('data-read-photo-timestamp="true"'), 1)

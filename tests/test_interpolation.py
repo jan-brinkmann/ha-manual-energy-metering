@@ -749,6 +749,16 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("cameraSecureContextRequired", card)
         self.assertIn("stream.getTracks().forEach", card)
         self.assertIn("await this._recognizeFile(file, false)", card)
+        capture_method = card[
+            card.index("  async _captureCameraPhoto()") :
+            card.index("  _closeCamera(render = true)")
+        ]
+        self.assertLess(
+            capture_method.index("this._closeCamera();"),
+            capture_method.index("const blob = await blobPromise;"),
+        )
+        self.assertIn("video.srcObject = null", card)
+        self.assertIn("window.requestAnimationFrame", capture_method)
         self.assertEqual(card.count('data-read-photo-timestamp="true"'), 1)
         self.assertIn("canvas.toBlob", card)
         self.assertIn("if (compressImage)", card)

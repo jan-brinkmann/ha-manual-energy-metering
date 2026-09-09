@@ -38,6 +38,7 @@ const DEFAULT_CONFIG = {
   show_last_reading: true,
   show_last_reading_timestamp: true,
   show_photo_buttons: true,
+  show_current_time_button: true,
   show_history_link: true,
 };
 
@@ -81,6 +82,7 @@ const TRANSLATIONS = {
       completed: "Result processed",
     },
     previewAlt: "Selected meter photograph",
+    currentTime: "Now",
     add: "Add reading",
     added: "The meter reading was added.",
     noReadings: "No readings yet",
@@ -100,6 +102,7 @@ const TRANSLATIONS = {
       show_last_reading: "Show last reading",
       show_last_reading_timestamp: "Show last reading date",
       show_photo_buttons: "Show photo buttons",
+      show_current_time_button: 'Show "Now" button',
       show_history_link: "Show link to complete history",
     },
     errors: {
@@ -167,6 +170,7 @@ const TRANSLATIONS = {
       completed: "Ergebnis verarbeitet",
     },
     previewAlt: "Ausgewähltes Zählerfoto",
+    currentTime: "Jetzt",
     add: "Zählerstand eintragen",
     added: "Der Zählerstand wurde eingetragen.",
     noReadings: "Noch keine Zählerstände",
@@ -188,6 +192,7 @@ const TRANSLATIONS = {
       show_last_reading: "Letzten Zählerstand anzeigen",
       show_last_reading_timestamp: "Letztes Ablesedatum anzeigen",
       show_photo_buttons: "Schaltflächen für Fotos anzeigen",
+      show_current_time_button: 'Schaltfläche "Jetzt" anzeigen',
       show_history_link: "Link zur vollständigen Historie anzeigen",
     },
     errors: {
@@ -279,6 +284,7 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
       show_last_reading: this._config.show_last_reading,
       show_last_reading_timestamp: this._config.show_last_reading_timestamp,
       show_photo_buttons: this._config.show_photo_buttons,
+      show_current_time_button: this._config.show_current_time_button,
       show_history_link: this._config.show_history_link,
     };
     form.schema = [
@@ -302,6 +308,7 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
         selector: { boolean: {} },
       },
       { name: "show_photo_buttons", selector: { boolean: {} } },
+      { name: "show_current_time_button", selector: { boolean: {} } },
       { name: "show_history_link", selector: { boolean: {} } },
     ];
     form.computeLabel = (schema) =>
@@ -609,12 +616,27 @@ class ManualEnergyMeteringCard extends HTMLElement {
               />
             </label>
             <div class="form-actions">
-              <button type="submit" ${
-                !hasEntity || !available || this._busy ? "disabled" : ""
-              }>
-                <ha-icon icon="mdi:plus"></ha-icon>
-                <span>${this._escape(t.add)}</span>
-              </button>
+              <div class="reading-actions">
+                ${
+                  this._config.show_current_time_button
+                    ? `<button
+                        id="current-timestamp"
+                        class="timestamp-now"
+                        type="button"
+                        ${this._busy ? "disabled" : ""}
+                      >
+                        <ha-icon icon="mdi:clock-outline"></ha-icon>
+                        <span>${this._escape(t.currentTime)}</span>
+                      </button>`
+                    : ""
+                }
+                <button type="submit" ${
+                  !hasEntity || !available || this._busy ? "disabled" : ""
+                }>
+                  <ha-icon icon="mdi:plus"></ha-icon>
+                  <span>${this._escape(t.add)}</span>
+                </button>
+              </div>
               ${this._renderHistoryLink()}
             </div>
           </form>
@@ -630,6 +652,9 @@ class ManualEnergyMeteringCard extends HTMLElement {
 
     const form = this.shadowRoot.querySelector("#reading-form");
     form?.addEventListener("submit", (event) => this._submit(event));
+    this.shadowRoot
+      .querySelector("#current-timestamp")
+      ?.addEventListener("click", () => this._setCurrentTimestamp());
     this.shadowRoot
       .querySelectorAll(".photo-input")
       .forEach((input) =>
@@ -1848,6 +1873,16 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  _setCurrentTimestamp() {
+    if (this._busy) {
+      return;
+    }
+    this._formTimestamp = this._formatInputTimestamp(new Date());
+    this._timestampDirty = true;
+    this._message = undefined;
+    this._render();
+  }
+
   _setBusy(busy) {
     this._busy = busy;
     this.shadowRoot
@@ -2227,6 +2262,16 @@ class ManualEnergyMeteringCard extends HTMLElement {
         justify-items: start;
         gap: 10px;
       }
+      .reading-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .timestamp-now {
+        color: var(--primary-text-color);
+        background: var(--secondary-background-color);
+        border: 1px solid var(--divider-color);
+      }
       .message {
         min-height: 0;
         margin-top: 0;
@@ -2276,6 +2321,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
         .photo-buttons { display: grid; grid-template-columns: 1fr 1fr; }
         form { grid-template-columns: 1fr; }
         .form-actions { grid-column: auto; justify-items: stretch; }
+        .reading-actions {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+        }
+        .timestamp-now { width: auto; }
         button { width: 100%; }
         .history-link { justify-content: center; }
       }

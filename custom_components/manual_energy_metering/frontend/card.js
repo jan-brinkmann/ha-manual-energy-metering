@@ -940,9 +940,16 @@ class ManualEnergyMeteringCard extends HTMLElement {
         throw new Error(this._t.cameraCaptureFailed);
       }
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise((resolve) =>
+      const blobPromise = new Promise((resolve) =>
         canvas.toBlob(resolve, "image/jpeg", 0.95)
       );
+      this._closeCamera();
+      await new Promise((resolve) =>
+        window.requestAnimationFrame(() =>
+          window.requestAnimationFrame(resolve)
+        )
+      );
+      const blob = await blobPromise;
       if (!blob) {
         throw new Error(this._t.cameraCaptureFailed);
       }
@@ -950,7 +957,6 @@ class ManualEnergyMeteringCard extends HTMLElement {
         type: "image/jpeg",
         lastModified: Date.now(),
       });
-      this._closeCamera(false);
       await this._recognizeFile(file, false);
     } catch (error) {
       this._closeCamera(false);
@@ -964,6 +970,18 @@ class ManualEnergyMeteringCard extends HTMLElement {
 
   _closeCamera(render = true) {
     this._cameraRequestId += 1;
+    const overlay = this.shadowRoot.querySelector(".camera-overlay");
+    const video = this.shadowRoot.querySelector("#camera-preview");
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.style.display = "none";
+    }
+    if (video) {
+      video.pause();
+      video.srcObject = null;
+      video.removeAttribute("src");
+      video.load();
+    }
     const stream = this._cameraStream;
     this._cameraStream = undefined;
     this._cameraStarting = false;

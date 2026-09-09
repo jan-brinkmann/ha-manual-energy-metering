@@ -1313,7 +1313,6 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
 
     const entityId = this._config.entity;
-    const currentTimestamp = this._formatInputTimestamp(new Date());
     this._photoPreview = undefined;
     this._recognitionStage = "preparing";
     this._recognitionFailed = false;
@@ -1327,7 +1326,6 @@ class ManualEnergyMeteringCard extends HTMLElement {
           ? this._readPhotoTimestamp(file)
           : Promise.resolve(undefined),
       ]);
-      const timestamp = photoTimestamp || currentTimestamp;
       if (photoTimestamp && this._config.entity === entityId) {
         this._formTimestamp = photoTimestamp;
         this._timestampDirty = true;
@@ -1368,6 +1366,8 @@ class ManualEnergyMeteringCard extends HTMLElement {
       if (this._config.entity !== entityId) {
         return;
       }
+      const timestamp =
+        photoTimestamp || this._formatInputTimestamp(new Date());
       if (this._recognitionStage !== "completed") {
         this._recognitionStage = "completed";
       }

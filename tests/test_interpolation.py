@@ -783,7 +783,18 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("dateTime: 0x0132", card)
         self.assertIn("_findExifTiff(view)", card)
         self.assertIn("_formatExifDateTime(metadata)", card)
-        self.assertIn("photoTimestamp || currentTimestamp", card)
+        recognize_method = card[
+            card.index("  async _recognizeFile(") :
+            card.index("  async _readPhotoTimestamp(")
+        ]
+        response_received = recognize_method.index(
+            "result = await this._readRecognitionResponse(response);"
+        )
+        fallback_timestamp = recognize_method.index(
+            "photoTimestamp || this._formatInputTimestamp(new Date())"
+        )
+        self.assertLess(response_received, fallback_timestamp)
+        self.assertNotIn("currentTimestamp", recognize_method)
         self.assertIn("this._formTimestamp = photoTimestamp", card)
         self.assertNotIn("pad(second)", card)
         self.assertNotIn("parts.second", card)

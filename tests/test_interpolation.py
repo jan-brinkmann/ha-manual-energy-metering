@@ -635,6 +635,9 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("show_last_reading", card)
         self.assertIn("show_last_reading_timestamp", card)
         self.assertIn("show_photo_buttons", card)
+        self.assertIn("show_current_time_button: true", card)
+        self.assertIn('name: "show_current_time_button"', card)
+        self.assertIn("this._config.show_current_time_button", card)
         self.assertIn("show_history_link", card)
         self.assertIn("prefill_digits: 0", card)
         self.assertIn('name: "prefill_digits"', card)
@@ -650,6 +653,27 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn(".summary div:only-child", card)
         self.assertNotIn('class="accent"', card)
         self.assertIn('class="form-actions"', card)
+        self.assertIn('id="current-timestamp"', card)
+        self.assertIn('icon="mdi:clock-outline"', card)
+        self.assertIn('currentTime: "Now"', card)
+        self.assertIn('currentTime: "Jetzt"', card)
+        self.assertIn("this._setCurrentTimestamp()", card)
+        self.assertIn(
+            "this._formTimestamp = this._formatInputTimestamp(new Date());",
+            card,
+        )
+        action_buttons = card[
+            card.index('<div class="reading-actions">') :
+            card.index("${this._renderHistoryLink()}")
+        ]
+        self.assertLess(
+            action_buttons.index('id="current-timestamp"'),
+            action_buttons.index('<button type="submit"'),
+        )
+        self.assertIn(
+            "grid-template-columns: auto minmax(0, 1fr);",
+            card,
+        )
         self.assertIn('icon="mdi:plus"', card)
         self.assertIn("${this._renderHistoryLink()}", card)
         self.assertNotIn("${this._escape(t.newReading)}", card)
@@ -783,7 +807,18 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("dateTime: 0x0132", card)
         self.assertIn("_findExifTiff(view)", card)
         self.assertIn("_formatExifDateTime(metadata)", card)
-        self.assertIn("photoTimestamp || currentTimestamp", card)
+        recognize_method = card[
+            card.index("  async _recognizeFile(") :
+            card.index("  async _readPhotoTimestamp(")
+        ]
+        response_received = recognize_method.index(
+            "result = await this._readRecognitionResponse(response);"
+        )
+        fallback_timestamp = recognize_method.index(
+            "photoTimestamp || this._formatInputTimestamp(new Date())"
+        )
+        self.assertLess(response_received, fallback_timestamp)
+        self.assertNotIn("currentTimestamp", recognize_method)
         self.assertIn("this._formTimestamp = photoTimestamp", card)
         self.assertNotIn("pad(second)", card)
         self.assertNotIn("parts.second", card)

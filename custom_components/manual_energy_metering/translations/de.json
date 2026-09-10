@@ -1,12 +1,6 @@
 {
   "title": "Manuelle Energiemessung",
   "config": {
-    "import_csv": {
-      "description": "Die Importseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine CSV-Daten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle eine exportierte CSV-Datei aus und bestätige den vorgeschlagenen oder einen neuen Zählernamen."
-    },
-    "export_statistics": {
-      "description": "Die Exportseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine Statistikdaten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle einen kompatiblen Energy-Dashboard-Zähler aus und lade seine Stundenhistorie herunter."
-    },
     "step": {
       "user": {
         "title": "Zähler hinzufügen",

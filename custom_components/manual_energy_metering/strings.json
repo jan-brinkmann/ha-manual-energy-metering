@@ -1,12 +1,6 @@
 {
   "title": "Manual Energy Metering",
   "config": {
-    "import_csv": {
-      "description": "The import page is part of your own Home Assistant instance. No CSV data is sent to an external website or service. Open the page, select an exported CSV file, and confirm the suggested or a new meter name."
-    },
-    "export_statistics": {
-      "description": "The export page is part of your own Home Assistant instance. No statistics are sent to an external website or service. Open the page, select a compatible Energy Dashboard meter, and download its hourly history."
-    },
     "step": {
       "user": {
         "title": "Add a meter",

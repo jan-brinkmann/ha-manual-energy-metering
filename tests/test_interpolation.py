@@ -978,14 +978,8 @@ class IntegrationIdentityTests(unittest.TestCase):
             self.assertIn("Home", import_description)
             self.assertIn("CSV", import_description)
             self.assertIn("extern", import_description.lower())
-            self.assertEqual(
-                translation["config"]["import_csv"]["description"],
-                import_description,
-            )
-            self.assertEqual(
-                translation["config"]["export_statistics"]["description"],
-                steps["export_statistics"]["description"],
-            )
+            self.assertNotIn("import_csv", translation["config"])
+            self.assertNotIn("export_statistics", translation["config"])
 
     def test_energy_dashboard_statistics_export_is_connected(self) -> None:
         config_flow = (MODULE_DIR / "config_flow.py").read_text()

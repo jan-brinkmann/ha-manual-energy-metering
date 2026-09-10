@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
-from .csv_http import CsvImportView, CsvInspectView
+from .csv_http import CsvExportCompleteView, CsvImportView, CsvInspectView
 
 PANEL_URL = f"/{DOMAIN}_static"
 PANEL_COMPONENT = f"{DOMAIN.replace('_', '-')}-panel"
@@ -80,6 +80,7 @@ async def async_register_import_ui(hass: HomeAssistant) -> None:
     )
     hass.http.register_view(CsvInspectView)
     hass.http.register_view(CsvImportView)
+    hass.http.register_view(CsvExportCompleteView)
     await panel_custom.async_register_panel(
         hass=hass,
         frontend_url_path=DOMAIN,

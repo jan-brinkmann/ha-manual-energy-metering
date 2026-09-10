@@ -43,12 +43,28 @@ const TRANSLATIONS = {
     delete: "Delete",
     exportCsv: "Export CSV",
     exportedCsv: "The CSV file was downloaded.",
+    statisticsExportTitle: "Export an Energy Dashboard meter",
+    statisticsExportDescription:
+      "Select a compatible long-term statistic. Its complete hourly history is exported and can be imported as a new Manual Energy Metering meter in another Home Assistant instance.",
+    statisticsSource: "Long-term statistic",
+    statisticsMeterType: "Meter type",
+    statisticsUnitConversion: "{source} is exported as {target}.",
+    exportStatistics: "Export hourly history",
+    loadingStatistics: "Loading compatible long-term statistics...",
+    noStatistics:
+      "No compatible energy or volume statistics with a sum were found.",
+    statisticsExported:
+      "The hourly history was downloaded. You can now import this CSV file in the target instance.",
+    statisticsNegativeWarning:
+      "Consumption was negative during the following hours and was replaced with 0 for the export:",
+    closeExport: "Close export page",
     importTitle: "Import meter from CSV",
     importDescription:
       "Select a CSV file exported by Manual Energy Metering. The original name is suggested and can be replaced.",
     csvFile: "CSV file",
     importedMeterName: "Name of the new meter",
     importedMeterDetails: "{count} readings · {type} · {unit}",
+    importedStatisticsDetails: "{count} hourly values · {type} · {unit}",
     importMeter: "Continue with this meter",
     importComplete:
       "The CSV data was accepted. Return to the Home Assistant setup dialog to configure photo recognition and finish creating the meter.",
@@ -64,7 +80,8 @@ const TRANSLATIONS = {
     updated: "The meter reading was updated.",
     deleted: "The meter reading was deleted.",
     confirmDelete: "Delete {value} from {date}?",
-    missingEntry: "No meter was selected. Open this page from the integration card.",
+    missingEntry:
+      "No meter was selected. Open Manual Energy Metering under Settings > Devices & services and select the gear icon for the desired meter. To export an Energy Dashboard meter, select Add entry instead.",
     required: "Enter a date, a time, and a meter reading.",
     invalidValue: "Enter a valid, non-negative meter reading.",
     genericError: "The operation could not be completed.",
@@ -93,6 +110,16 @@ const TRANSLATIONS = {
       csv_invalid_name: "Enter a name for the new meter.",
       csv_flow_not_found: "The import has expired. Start it again.",
       csv_import_failed: "The CSV file could not be imported.",
+      csv_export_failed: "The statistics export could not be completed.",
+      statistics_not_found:
+        "The selected long-term statistic is no longer available.",
+      statistics_invalid_meter_type:
+        "The selected meter type does not match this statistic.",
+      statistics_invalid_data:
+        "The long-term statistic contains invalid hourly data.",
+      statistics_decreasing:
+        "This statistic contains a negative meter state and cannot be imported as an increasing meter.",
+      statistics_empty: "The selected statistic has no hourly history.",
     },
   },
   de: {
@@ -121,12 +148,28 @@ const TRANSLATIONS = {
     delete: "Löschen",
     exportCsv: "CSV exportieren",
     exportedCsv: "Die CSV-Datei wurde heruntergeladen.",
+    statisticsExportTitle: "Energy-Dashboard-Zähler exportieren",
+    statisticsExportDescription:
+      "Wähle eine kompatible Langzeitstatistik. Ihre vollständige Stundenhistorie wird exportiert und kann in einer anderen Home-Assistant-Instanz als neuer Zähler der Manuellen Energiemessung importiert werden.",
+    statisticsSource: "Langzeitstatistik",
+    statisticsMeterType: "Zählertyp",
+    statisticsUnitConversion: "{source} wird als {target} exportiert.",
+    exportStatistics: "Stundenhistorie exportieren",
+    loadingStatistics: "Kompatible Langzeitstatistiken werden geladen...",
+    noStatistics:
+      "Es wurden keine kompatiblen Energie- oder Volumenstatistiken mit einer Summe gefunden.",
+    statisticsExported:
+      "Die Stundenhistorie wurde heruntergeladen. Du kannst diese CSV-Datei nun in der Zielinstanz importieren.",
+    statisticsNegativeWarning:
+      "In den folgenden Stunden war der Verbrauch negativ und wurde für den Export auf 0 gesetzt:",
+    closeExport: "Exportseite schließen",
     importTitle: "Zähler aus CSV importieren",
     importDescription:
       "Wähle eine von der Manuellen Energiemessung exportierte CSV-Datei. Der ursprüngliche Name wird vorgeschlagen und kann ersetzt werden.",
     csvFile: "CSV-Datei",
     importedMeterName: "Name des neuen Zählers",
     importedMeterDetails: "{count} Zählerstände · {type} · {unit}",
+    importedStatisticsDetails: "{count} Stundenwerte · {type} · {unit}",
     importMeter: "Mit diesem Zähler fortfahren",
     importComplete:
       "Die CSV-Daten wurden übernommen. Kehre zum Einrichtungsdialog von Home Assistant zurück, konfiguriere die Fotoerkennung und schließe das Anlegen des Zählers ab.",
@@ -143,7 +186,7 @@ const TRANSLATIONS = {
     deleted: "Der Zählerstand wurde gelöscht.",
     confirmDelete: "Soll {value} vom {date} gelöscht werden?",
     missingEntry:
-      "Es wurde kein Zähler ausgewählt. Öffne diese Seite über die Integrationskachel.",
+      "Es wurde kein Zähler ausgewählt. Öffne unter Einstellungen > Geräte & Dienste die Manuelle Energiemessung und klicke beim gewünschten Zähler auf das Zahnradsymbol. Zum Exportieren eines Energy-Dashboard-Zählers wähle stattdessen Eintrag hinzufügen.",
     required: "Gib Datum, Uhrzeit und einen Zählerstand ein.",
     invalidValue: "Gib einen gültigen, nicht negativen Zählerstand ein.",
     genericError: "Die Aktion konnte nicht abgeschlossen werden.",
@@ -173,6 +216,16 @@ const TRANSLATIONS = {
       csv_invalid_name: "Gib einen Namen für den neuen Zähler ein.",
       csv_flow_not_found: "Der Import ist abgelaufen. Starte ihn erneut.",
       csv_import_failed: "Die CSV-Datei konnte nicht importiert werden.",
+      csv_export_failed: "Der Statistikexport konnte nicht abgeschlossen werden.",
+      statistics_not_found:
+        "Die ausgewählte Langzeitstatistik ist nicht mehr verfügbar.",
+      statistics_invalid_meter_type:
+        "Der ausgewählte Zählertyp passt nicht zu dieser Statistik.",
+      statistics_invalid_data:
+        "Die Langzeitstatistik enthält ungültige Stundendaten.",
+      statistics_decreasing:
+        "Diese Statistik enthält einen negativen Zählerstand und kann nicht als steigender Zähler importiert werden.",
+      statistics_empty: "Die ausgewählte Statistik besitzt keine Stundenhistorie.",
     },
   },
 };
@@ -193,17 +246,36 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._importFlowId = new URLSearchParams(window.location.search).get(
       "import_flow"
     );
+    this._exportFlowId = new URLSearchParams(window.location.search).get(
+      "export_flow"
+    );
     this._importFile = undefined;
     this._importMetadata = undefined;
     this._importName = "";
     this._importComplete = false;
     this._importMessage = undefined;
+    this._exportStatistics = undefined;
+    this._selectedStatisticId = "";
+    this._selectedMeterType = "";
+    this._exportComplete = false;
+    this._exportMessage = undefined;
+    this._statisticsLoading = false;
+    this._correctedNegativeHours = [];
+    this._exportUnit = "";
   }
 
   set hass(value) {
-    if (this._importFlowId) {
+    if (this._importFlowId || this._exportFlowId) {
       this._hass = value;
       this._render();
+      if (
+        this._exportFlowId &&
+        this.isConnected &&
+        !this._statisticsLoading &&
+        this._exportStatistics === undefined
+      ) {
+        this._loadExportStatistics();
+      }
       return;
     }
     const oldLocale = this._locale;
@@ -230,8 +302,16 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   connectedCallback() {
-    if (this._importFlowId) {
+    if (this._importFlowId || this._exportFlowId) {
       this._render();
+      if (
+        this._exportFlowId &&
+        this._hass &&
+        !this._statisticsLoading &&
+        this._exportStatistics === undefined
+      ) {
+        this._loadExportStatistics();
+      }
       return;
     }
     this._syncEntryId();
@@ -326,6 +406,10 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   _render() {
+    if (this._exportFlowId) {
+      this._renderStatisticsExport();
+      return;
+    }
     if (this._importFlowId) {
       this._renderImport();
       return;
@@ -430,15 +514,286 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._setBusy(this._busy);
   }
 
+  _renderStatisticsExport() {
+    const t = this._t;
+    const statistics = this._exportStatistics || [];
+    const selected = statistics.find(
+      (item) => item.statistic_id === this._selectedStatisticId
+    );
+    const meterTypes = selected?.meter_types || [];
+    const conversion = selected
+      ? t.statisticsUnitConversion
+          .replace("{source}", selected.source_unit || "-")
+          .replace("{target}", selected.target_unit)
+      : "";
+
+    this.shadowRoot.innerHTML = `
+      <style>${this._styles()}</style>
+      <main class="import-page">
+        <header class="hero">
+          <button
+            id="back-button"
+            class="back-button"
+            type="button"
+            aria-label="${this._escapeAttribute(t.back)}"
+            title="${this._escapeAttribute(t.back)}"
+          ><ha-icon icon="mdi:arrow-left"></ha-icon></button>
+          <div class="hero-content">
+            <div class="eyebrow">${this._escape(t.eyebrow)}</div>
+            <h1>${this._escape(t.statisticsExportTitle)}</h1>
+            <p>${this._escape(t.statisticsExportDescription)}</p>
+          </div>
+        </header>
+
+        <section class="entry-card import-card">
+          ${
+            this._exportComplete
+              ? `<div class="import-complete">
+                  <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+                  <p>${this._escape(t.statisticsExported)}</p>
+                  ${this._renderNegativeStatisticsWarning()}
+                  <button id="close-export" class="primary" type="button">
+                    ${this._icon("check")}
+                    <span>${this._escape(t.closeExport)}</span>
+                  </button>
+                </div>`
+              : this._exportStatistics === undefined
+                ? `<div class="empty no-border">${this._escape(
+                    t.loadingStatistics
+                  )}</div>`
+                : statistics.length === 0
+                  ? `<div class="empty no-border">${this._escape(
+                      t.noStatistics
+                    )}</div>`
+                  : `<form id="statistics-export-form" class="import-form">
+                      <label>
+                        <span>${this._escape(t.statisticsSource)}</span>
+                        <select id="statistics-source" ${
+                          this._busy ? "disabled" : ""
+                        }>
+                          ${statistics
+                            .map(
+                              (item) => `<option
+                                value="${this._escapeAttribute(
+                                  item.statistic_id
+                                )}"
+                                ${
+                                  item.statistic_id === this._selectedStatisticId
+                                    ? "selected"
+                                    : ""
+                                }
+                              >${this._escape(
+                                `${item.name} (${item.statistic_id})`
+                              )}</option>`
+                            )
+                            .join("")}
+                        </select>
+                      </label>
+                      <label>
+                        <span>${this._escape(t.statisticsMeterType)}</span>
+                        <select id="statistics-meter-type" ${
+                          this._busy ? "disabled" : ""
+                        }>
+                          ${meterTypes
+                            .map(
+                              (meterType) => `<option
+                                value="${this._escapeAttribute(meterType)}"
+                                ${
+                                  meterType === this._selectedMeterType
+                                    ? "selected"
+                                    : ""
+                                }
+                              >${this._escape(
+                                t.meterTypes[meterType] || meterType
+                              )}</option>`
+                            )
+                            .join("")}
+                        </select>
+                        <small>${this._escape(conversion)}</small>
+                      </label>
+                      <div class="form-actions">
+                        <button class="primary" type="submit" ${
+                          this._busy ? "disabled" : ""
+                        }>
+                          ${this._icon("download")}
+                          <span>${this._escape(t.exportStatistics)}</span>
+                        </button>
+                      </div>
+                    </form>`
+          }
+          <div class="message ${this._escapeAttribute(
+            this._exportMessage?.type || ""
+          )}" role="status" aria-live="polite">${this._escape(
+            this._exportMessage?.text || ""
+          )}</div>
+        </section>
+      </main>
+    `;
+
+    this.shadowRoot
+      .querySelector("#back-button")
+      ?.addEventListener("click", () => this._closeImportPage());
+    this.shadowRoot
+      .querySelector("#close-export")
+      ?.addEventListener("click", () => this._closeImportPage());
+    this.shadowRoot
+      .querySelector("#statistics-source")
+      ?.addEventListener("change", (event) => {
+        this._selectedStatisticId = event.target.value;
+        const item = this._exportStatistics.find(
+          (candidate) => candidate.statistic_id === event.target.value
+        );
+        this._selectedMeterType = item?.meter_types?.[0] || "";
+        this._exportMessage = undefined;
+        this._render();
+      });
+    this.shadowRoot
+      .querySelector("#statistics-meter-type")
+      ?.addEventListener("change", (event) => {
+        this._selectedMeterType = event.target.value;
+        this._exportMessage = undefined;
+      });
+    this.shadowRoot
+      .querySelector("#statistics-export-form")
+      ?.addEventListener("submit", (event) =>
+        this._submitStatisticsExport(event)
+      );
+  }
+
+  async _loadExportStatistics() {
+    this._statisticsLoading = true;
+    this._exportMessage = undefined;
+    this._render();
+    try {
+      this._exportStatistics = await this._hass.callWS({
+        type: `${DOMAIN}/statistics/list`,
+      });
+      const first = this._exportStatistics[0];
+      this._selectedStatisticId = first?.statistic_id || "";
+      this._selectedMeterType = first?.meter_types?.[0] || "";
+    } catch (error) {
+      this._exportStatistics = [];
+      this._exportMessage = {
+        text: this._localizedError(error),
+        type: "error",
+      };
+    } finally {
+      this._statisticsLoading = false;
+      this._render();
+    }
+  }
+
+  async _submitStatisticsExport(event) {
+    event.preventDefault();
+    if (
+      this._busy ||
+      !this._selectedStatisticId ||
+      !this._selectedMeterType
+    ) {
+      return;
+    }
+    this._busy = true;
+    this._exportMessage = undefined;
+    this._correctedNegativeHours = [];
+    this._render();
+    try {
+      const exported = await this._hass.callWS({
+        type: `${DOMAIN}/statistics/export`,
+        statistic_id: this._selectedStatisticId,
+        meter_type: this._selectedMeterType,
+      });
+      this._correctedNegativeHours = Array.isArray(
+        exported.corrected_negative_hours
+      )
+        ? exported.corrected_negative_hours.filter(
+            (item) =>
+              item &&
+              typeof item.start === "string" &&
+              typeof item.value === "number" &&
+              Number.isFinite(item.value)
+          )
+        : [];
+      this._exportUnit =
+        typeof exported.unit === "string" ? exported.unit : "";
+      this._downloadCsv(exported);
+      const response = await this._hass.fetchWithAuth(
+        `/api/${DOMAIN}/csv/export-complete?flow_id=${encodeURIComponent(
+          this._exportFlowId
+        )}`,
+        { method: "POST" }
+      );
+      await this._readCsvResponse(response);
+      this._exportComplete = true;
+    } catch (error) {
+      this._exportMessage = {
+        text: this._localizedError(error),
+        type: "error",
+      };
+    } finally {
+      this._busy = false;
+      this._render();
+    }
+  }
+
+  _renderNegativeStatisticsWarning() {
+    if (!this._correctedNegativeHours.length) {
+      return "";
+    }
+    return `
+      <div class="statistics-warning" role="alert">
+        <strong>${this._escape(this._t.statisticsNegativeWarning)}</strong>
+        <ul>
+          ${this._correctedNegativeHours
+            .map(
+              (item) =>
+                `<li>${this._escape(
+                  this._formatStatisticsCorrection(item)
+                )}</li>`
+            )
+            .join("")}
+        </ul>
+      </div>
+    `;
+  }
+
+  _formatStatisticsHour(timestamp) {
+    const start = new Date(timestamp);
+    if (Number.isNaN(start.getTime())) {
+      return timestamp;
+    }
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const formatter = new Intl.DateTimeFormat(this._locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: this._timeZone,
+    });
+    return `${formatter.format(start)} - ${formatter.format(end)}`;
+  }
+
+  _formatStatisticsCorrection(item) {
+    const unit = this._exportUnit ? ` ${this._exportUnit}` : "";
+    return `${this._formatStatisticsHour(item.start)}: ${this._formatNumber(
+      item.value
+    )}${unit}`;
+  }
+
   _renderImport() {
     const t = this._t;
     const metadata = this._importMetadata;
     const meterType = metadata
       ? t.meterTypes[metadata.meter_type] || metadata.meter_type
       : "";
+    const detailsTemplate = metadata?.statistics_count
+      ? t.importedStatisticsDetails
+      : t.importedMeterDetails;
     const details = metadata
-      ? t.importedMeterDetails
-          .replace("{count}", this._formatNumber(metadata.reading_count))
+      ? detailsTemplate
+          .replace(
+            "{count}",
+            this._formatNumber(
+              metadata.statistics_count || metadata.reading_count
+            )
+          )
           .replace("{type}", meterType)
           .replace("{unit}", metadata.unit)
       : "";
@@ -739,17 +1094,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._setBusy(true);
     try {
       const exported = await this._call(`${DOMAIN}/readings/export`);
-      const blob = new Blob([exported.content], {
-        type: "text/csv;charset=utf-8",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = exported.filename;
-      this.shadowRoot.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      this._downloadCsv(exported);
       this._busy = false;
       this._render();
       this._showMessage(this._t.exportedCsv, "success");
@@ -757,6 +1102,20 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       this._setBusy(false);
       this._showMessage(this._localizedError(error), "error");
     }
+  }
+
+  _downloadCsv(exported) {
+    const blob = new Blob([exported.content], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = exported.filename;
+    this.shadowRoot.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   _renderTable(readings) {
@@ -1267,7 +1626,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         color: var(--secondary-text-color);
         font-size: 0.74rem;
       }
-      input {
+      input, select {
         width: 100%;
         height: 48px;
         border: 1px solid var(--divider-color);
@@ -1278,7 +1637,8 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         font: inherit;
         outline: none;
       }
-      input:focus {
+      select { padding-right: 36px; }
+      input:focus, select:focus {
         border-color: var(--primary-color);
         box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 22%, transparent);
       }
@@ -1331,6 +1691,22 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         --mdc-icon-size: 38px;
       }
       .import-complete p { margin-bottom: 0; line-height: 1.6; }
+      .statistics-warning {
+        width: 100%;
+        padding: 13px 15px;
+        border: 1px solid var(--warning-color, #f9a825);
+        border-radius: 11px;
+        background: color-mix(in srgb, var(--warning-color, #f9a825) 12%, transparent);
+        line-height: 1.5;
+      }
+      .statistics-warning strong { display: block; }
+      .statistics-warning ul {
+        max-height: 240px;
+        margin: 10px 0 0;
+        padding-left: 24px;
+        overflow: auto;
+        font-variant-numeric: tabular-nums;
+      }
       .message { min-height: 0; margin-top: 0; }
       .message:not(:empty) {
         margin-top: 16px;
@@ -1382,6 +1758,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .action-button.edit:hover { color: var(--primary-color); }
       .action-button.delete:hover { color: var(--error-color); }
       .empty { border-top: 1px solid var(--divider-color); padding: 36px 24px; color: var(--secondary-text-color); text-align: center; }
+      .empty.no-border { border-top: 0; }
       .error-text { color: var(--error-color); }
       .pagination {
         display: grid;

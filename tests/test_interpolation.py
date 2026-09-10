@@ -17,9 +17,15 @@ sys.path.insert(0, str(MODULE_DIR))
 import interpolation as interpolation_module  # noqa: E402
 from csv_transfer import (  # noqa: E402
     CSV_COLUMNS,
+    LEGACY_STATISTICS_CSV_COLUMNS,
+    STATISTICS_CSV_COLUMNS,
+    CsvStatisticsHour,
     CsvTransferError,
+    STATISTICS_CSV_FORMAT_VERSION,
+    clamp_negative_statistics_changes,
     export_filename,
     export_meter_csv,
+    export_statistics_csv,
     parse_meter_csv_bytes,
 )
 from interpolation import (  # noqa: E402
@@ -427,6 +433,232 @@ class CsvTransferTests(unittest.TestCase):
             [item.value for item in imported.readings], [10.0, 12.0]
         )
 
+    def test_statistics_round_trip_preserves_resets_and_gaps(self) -> None:
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        statistics = [
+            CsvStatisticsHour(
+                start,
+                start + timedelta(hours=1),
+                state=1005,
+                change=5,
+                sum=5,
+            ),
+            CsvStatisticsHour(
+                start + timedelta(hours=1),
+                start + timedelta(hours=2),
+                state=1010,
+                change=5,
+                sum=10,
+            ),
+            CsvStatisticsHour(
+                start + timedelta(hours=3),
+                start + timedelta(hours=4),
+                state=3,
+                change=3,
+                sum=13,
+            ),
+        ]
+
+        exported = export_statistics_csv(
+            "Physical gas meter",
+            "gas",
+            "L",
+            "sensor.physical_gas_meter",
+            statistics,
+        )
+        imported = parse_meter_csv_bytes(exported.encode())
+
+        self.assertEqual(imported.format_version, STATISTICS_CSV_FORMAT_VERSION)
+        self.assertEqual(
+            imported.source_statistic_id, "sensor.physical_gas_meter"
+        )
+        self.assertEqual(imported.statistics, tuple(statistics))
+        self.assertEqual(
+            imported.excluded_hour_starts,
+            (start + timedelta(hours=2),),
+        )
+        self.assertEqual(
+            [(item.timestamp, item.value) for item in imported.readings],
+            [
+                (start, 0),
+                (start + timedelta(hours=1), 5),
+                (start + timedelta(hours=2), 10),
+                (start + timedelta(hours=3), 10),
+                (start + timedelta(hours=4), 13),
+            ],
+        )
+
+        rebuilt_statistics = tuple(
+            CsvStatisticsHour(
+                bucket.start,
+                bucket.start + timedelta(hours=1),
+                state=bucket.cumulative,
+                change=bucket.consumption,
+                sum=bucket.cumulative,
+            )
+            for bucket in hourly_consumption(imported.readings, 0)
+            if bucket.start not in imported.excluded_hour_starts
+        )
+        reimported = parse_meter_csv_bytes(
+            export_statistics_csv(
+                imported.name,
+                imported.meter_type,
+                imported.unit,
+                imported.source_statistic_id or "",
+                rebuilt_statistics,
+            ).encode()
+        )
+        self.assertEqual(
+            reimported.excluded_hour_starts,
+            imported.excluded_hour_starts,
+        )
+        self.assertEqual(
+            [item.change for item in reimported.statistics],
+            [5, 5, 3],
+        )
+
+    def test_statistics_import_retains_physical_value_without_resets(self) -> None:
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        exported = export_statistics_csv(
+            "Electricity",
+            "electricity",
+            "kWh",
+            "sensor.grid_import",
+            [
+                CsvStatisticsHour(
+                    start,
+                    start + timedelta(hours=1),
+                    state=1125,
+                    change=5,
+                    sum=5,
+                ),
+                CsvStatisticsHour(
+                    start + timedelta(hours=1),
+                    start + timedelta(hours=2),
+                    state=1132,
+                    change=7,
+                    sum=12,
+                ),
+            ],
+        )
+
+        imported = parse_meter_csv_bytes(exported.encode())
+
+        self.assertEqual(imported.readings[0].value, 1120)
+        self.assertEqual(imported.readings[-1].value, 1132)
+
+    def test_statistics_import_rejects_negative_consumption(self) -> None:
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+        with self.assertRaises(CsvTransferError) as caught:
+            export_statistics_csv(
+                "Net energy",
+                "electricity",
+                "kWh",
+                "sensor.net_energy",
+                [
+                    CsvStatisticsHour(
+                        start,
+                        start + timedelta(hours=1),
+                        state=9,
+                        change=-1,
+                        sum=-1,
+                    )
+                ],
+            )
+
+        self.assertEqual(caught.exception.code, "csv_invalid_value")
+
+    def test_negative_statistics_changes_are_clamped_and_reported(self) -> None:
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        normalized, corrected = clamp_negative_statistics_changes(
+            [
+                CsvStatisticsHour(
+                    start,
+                    start + timedelta(hours=1),
+                    state=105,
+                    change=5,
+                    sum=5,
+                ),
+                CsvStatisticsHour(
+                    start + timedelta(hours=1),
+                    start + timedelta(hours=2),
+                    state=104.999,
+                    change=-0.001,
+                    sum=4.999,
+                ),
+                CsvStatisticsHour(
+                    start + timedelta(hours=2),
+                    start + timedelta(hours=3),
+                    state=107,
+                    change=2.001,
+                    sum=7,
+                ),
+            ]
+        )
+
+        self.assertEqual([item.change for item in normalized], [5, 0, 2.001])
+        self.assertEqual(
+            [item.original_change for item in normalized],
+            [None, -0.001, None],
+        )
+        for actual, expected in zip(
+            (item.sum for item in normalized), (5, 5, 7.001), strict=True
+        ):
+            self.assertAlmostEqual(actual, expected)
+        self.assertEqual(
+            corrected,
+            ((start + timedelta(hours=1), -0.001),),
+        )
+
+        exported = export_statistics_csv(
+            "Corrected meter",
+            "electricity",
+            "kWh",
+            "sensor.corrected_meter",
+            normalized,
+        )
+        self.assertIn("original_change", exported)
+        self.assertIn(",-0.001\r\n", exported)
+
+        imported = parse_meter_csv_bytes(exported.encode())
+        self.assertEqual(
+            [item.change for item in imported.statistics],
+            [5, 0, 2.001],
+        )
+        self.assertEqual(
+            [item.original_change for item in imported.statistics],
+            [None, -0.001, None],
+        )
+
+    def test_statistics_import_accepts_legacy_version_two_columns(self) -> None:
+        header = ",".join(LEGACY_STATISTICS_CSV_COLUMNS)
+        content = (
+            f"{header}\n"
+            "2,Archive,water,L,sensor.water,2026-01-01T00:00:00+00:00,"
+            "2026-01-01T01:00:00+00:00,11,1,1\n"
+        )
+
+        imported = parse_meter_csv_bytes(content.encode())
+
+        self.assertEqual(imported.statistics[0].change, 1)
+        self.assertIsNone(imported.statistics[0].original_change)
+
+    def test_statistics_import_rejects_an_excessive_timeline(self) -> None:
+        header = ",".join(STATISTICS_CSV_COLUMNS)
+        content = (
+            f"{header}\n"
+            "2,Archive,water,L,sensor.water,2000-01-01T00:00:00+00:00,"
+            "2000-01-01T01:00:00+00:00,1,1,1,\n"
+            "2,Archive,water,L,sensor.water,2020-01-01T00:00:00+00:00,"
+            "2020-01-01T01:00:00+00:00,2,1,2,\n"
+        )
+
+        with self.assertRaises(CsvTransferError) as caught:
+            parse_meter_csv_bytes(content.encode())
+
+        self.assertEqual(caught.exception.code, "csv_too_many_readings")
+
     def test_invalid_imports_return_stable_error_codes(self) -> None:
         header = ",".join(CSV_COLUMNS)
         cases = {
@@ -682,6 +914,8 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("_renderMeterTypeIcon", frontend)
         self.assertIn("mdi:arrow-left", frontend)
         self.assertIn("window.history.back()", frontend)
+        self.assertIn("beim gewünschten Zähler auf das Zahnradsymbol", frontend)
+        self.assertNotIn("Öffne diese Seite über die Integrationskachel", frontend)
         self.assertNotIn("async_clear_statistics", meter)
         self.assertNotIn("async_rebuild_statistics", meter)
         self.assertNotIn("async_rebuild_statistics", init)
@@ -712,13 +946,16 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn('id="imported-meter-name"', frontend)
         self.assertIn("/csv/inspect", frontend)
         self.assertIn("/csv/import?", frontend)
-        self.assertIn('menu_options=["manual", "import_csv"]', config_flow)
+        self.assertIn(
+            'menu_options=["manual","import_csv","export_statistics"]',
+            config_flow.replace("\n", "").replace(" ", ""),
+        )
         self.assertIn("async_external_step_done", config_flow)
         self.assertIn('request.headers.get(_HEADER_FRONTEND_BASE)', config_flow)
         self.assertIn("self._frontend_base.rstrip('/')", config_flow)
         self.assertIn("CONF_IMPORTED_READINGS", config_flow)
         self.assertIn("async_import_readings", meter)
-        self.assertIn("data.pop(CONF_IMPORTED_READINGS)", init)
+        self.assertIn("data.pop(CONF_IMPORTED_READINGS, None)", init)
         self.assertIn("CsvInspectView", panel)
         self.assertIn("CsvImportView", panel)
         self.assertIn("request.content.iter_chunked", csv_http)
@@ -734,6 +971,7 @@ class IntegrationIdentityTests(unittest.TestCase):
             steps = translation["config"]["step"]
             self.assertIn("manual", steps["user"]["menu_options"])
             self.assertIn("import_csv", steps["user"]["menu_options"])
+            self.assertIn("export_statistics", steps["user"]["menu_options"])
             self.assertIn("manual", steps)
             self.assertIn("import_csv", steps)
             import_description = steps["import_csv"]["description"]
@@ -744,6 +982,51 @@ class IntegrationIdentityTests(unittest.TestCase):
                 translation["config"]["import_csv"]["description"],
                 import_description,
             )
+            self.assertEqual(
+                translation["config"]["export_statistics"]["description"],
+                steps["export_statistics"]["description"],
+            )
+
+    def test_energy_dashboard_statistics_export_is_connected(self) -> None:
+        config_flow = (MODULE_DIR / "config_flow.py").read_text()
+        init = (MODULE_DIR / "__init__.py").read_text()
+        meter = (MODULE_DIR / "meter.py").read_text()
+        panel = (MODULE_DIR / "panel.py").read_text()
+        csv_http = (MODULE_DIR / "csv_http.py").read_text()
+        csv_transfer = (MODULE_DIR / "csv_transfer.py").read_text()
+        statistics_export = (MODULE_DIR / "statistics_export.py").read_text()
+        websocket_api = (MODULE_DIR / "websocket_api.py").read_text()
+        frontend = (MODULE_DIR / "frontend" / "panel.js").read_text()
+
+        self.assertIn("STATISTICS_CSV_FORMAT_VERSION", csv_transfer)
+        self.assertIn("STATISTICS_CSV_COLUMNS", csv_transfer)
+        self.assertIn("excluded_hour_starts", csv_transfer)
+        self.assertIn("statistics_during_period", statistics_export)
+        self.assertIn('statistic_type="sum"', statistics_export)
+        self.assertIn('{"change", "state", "sum"}', statistics_export)
+        self.assertIn("entity_entry.platform == DOMAIN", statistics_export)
+        self.assertIn("async_list_exportable_statistics", websocket_api)
+        self.assertIn("async_export_statistic", websocket_api)
+        self.assertIn("WS_LIST_EXPORT_STATISTICS", websocket_api)
+        self.assertIn("WS_EXPORT_STATISTIC", websocket_api)
+        self.assertIn("async_step_export_statistics", config_flow)
+        self.assertIn('next_step_id="statistics_exported"', config_flow)
+        self.assertIn("CsvExportCompleteView", csv_http)
+        self.assertIn("CsvExportCompleteView", panel)
+        self.assertIn("statistics_import_source", meter)
+        self.assertIn("statistics_excluded_hours", meter)
+        self.assertIn("CONF_IMPORTED_STATISTICS", init)
+        self.assertIn('"export_flow"', frontend)
+        self.assertIn("_renderStatisticsExport", frontend)
+        self.assertIn("_submitStatisticsExport", frontend)
+        self.assertIn("/statistics/list", frontend)
+        self.assertIn("/statistics/export", frontend)
+        self.assertIn("/csv/export-complete?", frontend)
+        self.assertIn("corrected_negative_hours", statistics_export)
+        self.assertIn("_renderNegativeStatisticsWarning", frontend)
+        self.assertIn("_formatStatisticsHour", frontend)
+        self.assertIn("_formatStatisticsCorrection", frontend)
+        self.assertIn("item.value", frontend)
 
     def test_dashboard_card_is_registered_and_entity_scoped(self) -> None:
         manifest = json.loads((MODULE_DIR / "manifest.json").read_text())

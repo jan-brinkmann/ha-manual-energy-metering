@@ -27,6 +27,7 @@ from .csv_transfer import (
 
 CSV_INSPECT_URL = f"/api/{DOMAIN}/csv/inspect"
 CSV_IMPORT_URL = f"/api/{DOMAIN}/csv/import"
+CSV_EXPORT_COMPLETE_URL = f"/api/{DOMAIN}/csv/export-complete"
 _READ_CHUNK_SIZE = 64 * 1024
 
 
@@ -83,6 +84,8 @@ class CsvInspectView(HomeAssistantView):
                 "meter_type": imported.meter_type,
                 "unit": imported.unit,
                 "reading_count": len(imported.readings),
+                "statistics_count": len(imported.statistics),
+                "format_version": imported.format_version,
             }
         )
 
@@ -128,5 +131,38 @@ class CsvImportView(HomeAssistantView):
                 "meter_type": imported.meter_type,
                 "unit": imported.unit,
                 "reading_count": len(imported.readings),
+                "statistics_count": len(imported.statistics),
+                "format_version": imported.format_version,
             }
         )
+
+
+class CsvExportCompleteView(HomeAssistantView):
+    """Complete a config flow after its statistics CSV was downloaded."""
+
+    url = CSV_EXPORT_COMPLETE_URL
+    name = f"api:{DOMAIN}:csv_export_complete"
+    requires_auth = True
+
+    async def post(self, request: web.Request) -> web.Response:
+        """Advance and finish the external statistics export step."""
+        _require_admin(request)
+        flow_id = request.query.get("flow_id", "").strip()
+        if not flow_id:
+            return _error_response("csv_flow_not_found", "Missing config flow ID.")
+
+        hass: HomeAssistant = request.app[KEY_HASS]
+        try:
+            result = await hass.config_entries.flow.async_configure(flow_id, {})
+        except data_entry_flow.UnknownFlow:
+            return _error_response(
+                "csv_flow_not_found",
+                "The statistics export flow no longer exists.",
+                HTTPStatus.NOT_FOUND,
+            )
+        if result["type"] != data_entry_flow.FlowResultType.EXTERNAL_STEP_DONE:
+            return _error_response(
+                "csv_export_failed",
+                "The statistics export flow could not be completed.",
+            )
+        return web.json_response({"completed": True})

@@ -4,12 +4,16 @@
     "import_csv": {
       "description": "Die Importseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine CSV-Daten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle eine exportierte CSV-Datei aus und bestätige den vorgeschlagenen oder einen neuen Zählernamen."
     },
+    "export_statistics": {
+      "description": "Die Exportseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine Statistikdaten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle einen kompatiblen Energy-Dashboard-Zähler aus und lade seine Stundenhistorie herunter."
+    },
     "step": {
       "user": {
         "title": "Zähler hinzufügen",
         "menu_options": {
           "manual": "Neuen Zähler anlegen",
-          "import_csv": "Exportierte CSV-Datei importieren"
+          "import_csv": "Exportierte CSV-Datei importieren",
+          "export_statistics": "Energy-Dashboard-Zähler exportieren"
         }
       },
       "manual": {
@@ -23,6 +27,10 @@
       "import_csv": {
         "title": "Zähler aus CSV importieren",
         "description": "Die Importseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine CSV-Daten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle eine exportierte CSV-Datei aus und bestätige den vorgeschlagenen oder einen neuen Zählernamen."
+      },
+      "export_statistics": {
+        "title": "Energy-Dashboard-Zähler exportieren",
+        "description": "Die Exportseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine Statistikdaten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle einen kompatiblen Energy-Dashboard-Zähler aus und lade seine Stundenhistorie herunter."
       },
       "unit": {
         "title": "Einheit des Stromzählers auswählen",
@@ -65,7 +73,8 @@
       "required": "Dieses Feld ist erforderlich."
     },
     "abort": {
-      "reconfigure_successful": "Die Einstellungen der Fotoerkennung wurden aktualisiert."
+      "reconfigure_successful": "Die Einstellungen der Fotoerkennung wurden aktualisiert.",
+      "statistics_exported": "Die Stundenstatistik wurde exportiert."
     }
   },
   "exceptions": {

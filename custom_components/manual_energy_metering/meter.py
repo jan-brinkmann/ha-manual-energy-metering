@@ -28,9 +28,11 @@ from .const import (
     CONF_METER_TYPE,
     CONF_UNIT,
     DOMAIN,
+    METER_TYPE_GAS,
     METER_TYPE_WATER,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
+    UNIT_LITERS,
 )
 from .interpolation import (
     DuplicateTimestampError,
@@ -103,6 +105,8 @@ class ManualEnergyMetering:
         self._listeners: set[Callable[[], None]] = set()
         self._lock = asyncio.Lock()
         self._statistics_baseline: float | None = None
+        self._statistics_excluded_hours: set[datetime] = set()
+        self._statistics_import_source: str | None = None
 
     @property
     def statistic_id(self) -> str:
@@ -118,6 +122,21 @@ class ManualEnergyMetering:
     def latest_reading(self) -> Reading | None:
         """Return the chronologically latest reading."""
         return self._readings[-1] if self._readings else None
+
+    @property
+    def statistics_baseline(self) -> float:
+        """Return the fixed baseline used by the cumulative statistic."""
+        return self._statistics_baseline or 0.0
+
+    @property
+    def excluded_statistics_hours(self) -> frozenset[datetime]:
+        """Return imported hours that must remain absent from the statistic."""
+        return frozenset(self._statistics_excluded_hours)
+
+    @property
+    def statistics_import_source(self) -> str | None:
+        """Return the original statistic ID for a version 2 import."""
+        return self._statistics_import_source
 
     def value_at(self, timestamp: datetime) -> float | None:
         """Return the linearly interpolated reading at a timestamp."""
@@ -165,6 +184,21 @@ class ManualEnergyMetering:
             baseline = self._readings[0].value if self._readings else None
         self._statistics_baseline = baseline
 
+        excluded_hours: set[datetime] = set()
+        for value in stored.get("statistics_excluded_hours", []):
+            timestamp = dt_util.parse_datetime(value)
+            if timestamp is None:
+                continue
+            timestamp = dt_util.as_utc(timestamp)
+            if timestamp.minute or timestamp.second or timestamp.microsecond:
+                continue
+            excluded_hours.add(timestamp)
+        self._statistics_excluded_hours = excluded_hours
+        source = stored.get("statistics_import_source")
+        self._statistics_import_source = (
+            source.strip() if isinstance(source, str) and source.strip() else None
+        )
+
     async def async_add_reading(self, value: Any, timestamp: Any) -> Reading:
         """Validate, persist, and publish a reading."""
         reading = Reading(
@@ -184,7 +218,9 @@ class ManualEnergyMetering:
         return reading
 
     async def async_import_readings(
-        self, items: list[dict[str, Any]]
+        self,
+        items: list[dict[str, Any]],
+        statistics_import: dict[str, Any] | None = None,
     ) -> None:
         """Persist a complete, validated set of readings for a new meter."""
         imported = [
@@ -205,7 +241,33 @@ class ManualEnergyMetering:
                     "invalid_import",
                     "CSV readings can only initialize an empty meter",
                 )
-            await self._async_save_readings(imported)
+            excluded_hours: set[datetime] | None = None
+            source: str | None = None
+            if statistics_import is not None:
+                source_value = statistics_import.get("source_statistic_id")
+                if not isinstance(source_value, str) or not source_value.strip():
+                    raise ReadingError(
+                        "invalid_import", "Missing source statistic ID"
+                    )
+                source = source_value.strip()
+                excluded_hours = set()
+                for value in statistics_import.get("excluded_hour_starts", []):
+                    timestamp = self._normalize_timestamp(value)
+                    if (
+                        timestamp.minute
+                        or timestamp.second
+                        or timestamp.microsecond
+                    ):
+                        raise ReadingError(
+                            "invalid_import",
+                            "Excluded statistics hours must start on the hour",
+                        )
+                    excluded_hours.add(timestamp)
+            await self._async_save_readings(
+                imported,
+                imported_excluded_hours=excluded_hours,
+                imported_statistics_source=source,
+            )
 
     async def async_update_reading(
         self, original_timestamp: Any, value: Any, timestamp: Any
@@ -258,10 +320,18 @@ class ManualEnergyMetering:
             listener()
         return deleted
 
-    async def _async_save_readings(self, updated: list[Reading]) -> None:
+    async def _async_save_readings(
+        self,
+        updated: list[Reading],
+        *,
+        imported_excluded_hours: set[datetime] | None = None,
+        imported_statistics_source: str | None = None,
+    ) -> None:
         """Persist readings and enqueue their minimal statistics update."""
         old_readings = self._readings
         old_baseline = self._statistics_baseline
+        old_excluded_hours = self._statistics_excluded_hours
+        old_import_source = self._statistics_import_source
         baseline = old_baseline
         if len(old_readings) < 2:
             baseline = updated[0].value if updated else None
@@ -271,11 +341,32 @@ class ManualEnergyMetering:
             old_readings, updated, baseline
         )
 
+        if imported_excluded_hours is None:
+            excluded_hours = set(old_excluded_hours)
+            excluded_hours.difference_update(
+                item.start for item in statistics_update.upsert
+            )
+        else:
+            excluded_hours = set(imported_excluded_hours)
+        upsert = tuple(
+            item
+            for item in statistics_update.upsert
+            if item.start not in excluded_hours
+        )
+        delete_starts = set(statistics_update.delete_starts)
+        delete_starts.update(excluded_hours - old_excluded_hours)
+        statistics_update = HourlyStatisticsUpdate(
+            tuple(sorted(delete_starts)), upsert
+        )
+
         stored_baseline = baseline
         if len(updated) < 2:
             stored_baseline = updated[0].value if updated else None
         self._readings = updated
         self._statistics_baseline = stored_baseline
+        self._statistics_excluded_hours = excluded_hours
+        if imported_statistics_source is not None:
+            self._statistics_import_source = imported_statistics_source
         try:
             await self._store.async_save(
                 {
@@ -287,11 +378,17 @@ class ManualEnergyMetering:
                         for item in updated
                     ],
                     "statistics_baseline": stored_baseline,
+                    "statistics_excluded_hours": [
+                        item.isoformat() for item in sorted(excluded_hours)
+                    ],
+                    "statistics_import_source": self._statistics_import_source,
                 }
             )
         except Exception:
             self._readings = old_readings
             self._statistics_baseline = old_baseline
+            self._statistics_excluded_hours = old_excluded_hours
+            self._statistics_import_source = old_import_source
             raise
 
         self._async_apply_statistics_update(statistics_update)
@@ -325,7 +422,12 @@ class ManualEnergyMetering:
 
     def _statistics_metadata(self) -> StatisticMetaData:
         """Return metadata for this meter's external statistic."""
-        unit_class = "volume" if self.meter_type == METER_TYPE_WATER else "energy"
+        unit_class = (
+            "volume"
+            if self.meter_type == METER_TYPE_WATER
+            or (self.meter_type == METER_TYPE_GAS and self.unit == UNIT_LITERS)
+            else "energy"
+        )
         return StatisticMetaData(
             has_sum=True,
             mean_type=StatisticMeanType.NONE,

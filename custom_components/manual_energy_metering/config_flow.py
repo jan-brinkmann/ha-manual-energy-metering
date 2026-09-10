@@ -23,6 +23,7 @@ from .const import (
     CONF_CLEAR_VISION_API_TOKEN,
     CONF_CSV_CONTENT,
     CONF_IMPORTED_READINGS,
+    CONF_IMPORTED_STATISTICS,
     CONF_METER_ID,
     CONF_METER_TYPE,
     CONF_UNIT,
@@ -43,6 +44,7 @@ from .const import (
 )
 from .csv_transfer import (
     CsvTransferError,
+    STATISTICS_CSV_FORMAT_VERSION,
     parse_meter_csv,
     validate_meter_name,
 )
@@ -138,14 +140,16 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the flow."""
         self._meter_data: dict[str, Any] = {}
         self._import_readings: list[dict[str, Any]] | None = None
+        self._import_statistics: dict[str, Any] | None = None
         self._frontend_base: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Choose between an empty meter and a CSV import."""
+        """Choose meter creation, CSV import, or statistics export."""
         return self.async_show_menu(
-            step_id="user", menu_options=["manual", "import_csv"]
+            step_id="user",
+            menu_options=["manual", "import_csv", "export_statistics"],
         )
 
     async def async_step_manual(
@@ -154,6 +158,7 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
         """Collect the meter name and type for an empty meter."""
         if user_input is not None:
             self._import_readings = None
+            self._import_statistics = None
             self._meter_data = user_input
             if user_input[CONF_METER_TYPE] == METER_TYPE_ELECTRICITY:
                 return await self.async_step_unit()
@@ -201,11 +206,48 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
                 for reading in imported.readings
             ]
+            self._import_statistics = (
+                {
+                    "source_statistic_id": imported.source_statistic_id,
+                    "excluded_hour_starts": [
+                        item.isoformat()
+                        for item in imported.excluded_hour_starts
+                    ],
+                }
+                if imported.format_version == STATISTICS_CSV_FORMAT_VERSION
+                else None
+            )
             return self.async_external_step_done(next_step_id="vision")
         return await self._async_show_csv_import()
 
     async def _async_show_csv_import(self) -> dict[str, Any]:
         """Expose the file picker used by the external import step."""
+        url = await self._async_external_panel_url(
+            f"import_flow={self.flow_id}"
+        )
+        return self.async_external_step(step_id="import_csv", url=url)
+
+    async def async_step_export_statistics(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Export a physical meter's long-term statistics through the panel."""
+        if user_input is not None:
+            return self.async_external_step_done(
+                next_step_id="statistics_exported"
+            )
+        url = await self._async_external_panel_url(
+            f"export_flow={self.flow_id}"
+        )
+        return self.async_external_step(step_id="export_statistics", url=url)
+
+    async def async_step_statistics_exported(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Finish a config flow which was used only for exporting data."""
+        return self.async_abort(reason="statistics_exported")
+
+    async def _async_external_panel_url(self, query: str) -> str:
+        """Return an absolute URL for one authenticated panel mode."""
         await async_register_import_ui(self.hass)
         request = http.current_request.get()
         if request is not None and (
@@ -214,13 +256,7 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
             self._frontend_base = frontend_base
         if self._frontend_base is None:
             raise RuntimeError("The Home Assistant frontend base URL is unavailable")
-        return self.async_external_step(
-            step_id="import_csv",
-            url=(
-                f"{self._frontend_base.rstrip('/')}/{DOMAIN}"
-                f"?import_flow={self.flow_id}"
-            ),
-        )
+        return f"{self._frontend_base.rstrip('/')}/{DOMAIN}?{query}"
 
     async def async_step_unit(
         self, user_input: dict[str, Any] | None = None
@@ -313,6 +349,8 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
         self._meter_data[CONF_METER_ID] = meter_id
         if self._import_readings is not None:
             self._meter_data[CONF_IMPORTED_READINGS] = self._import_readings
+        if self._import_statistics is not None:
+            self._meter_data[CONF_IMPORTED_STATISTICS] = self._import_statistics
         return self.async_create_entry(
             title=self._meter_data[CONF_NAME], data=self._meter_data
         )

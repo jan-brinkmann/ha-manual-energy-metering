@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -20,10 +21,21 @@ from .const import (
     CONF_CONFIG_ENTRY_ID,
     CONF_METER_TYPE,
     DOMAIN,
+    METER_TYPES,
 )
-from .csv_transfer import export_filename, export_meter_csv
-from .interpolation import paginate_readings
+from .csv_transfer import (
+    CsvStatisticsHour,
+    CsvTransferError,
+    export_filename,
+    export_meter_csv,
+    export_statistics_csv,
+)
+from .interpolation import hourly_consumption, paginate_readings
 from .meter import ManualEnergyMetering, ReadingError
+from .statistics_export import (
+    async_export_statistic,
+    async_list_exportable_statistics,
+)
 
 WS_LIST_READINGS = f"{DOMAIN}/readings/list"
 WS_ADD_READING = f"{DOMAIN}/readings/add"
@@ -31,6 +43,8 @@ WS_UPDATE_READING = f"{DOMAIN}/readings/update"
 WS_DELETE_READING = f"{DOMAIN}/readings/delete"
 WS_CARD_ADD_READING = f"{DOMAIN}/card/add"
 WS_EXPORT_READINGS = f"{DOMAIN}/readings/export"
+WS_LIST_EXPORT_STATISTICS = f"{DOMAIN}/statistics/list"
+WS_EXPORT_STATISTIC = f"{DOMAIN}/statistics/export"
 PAGE_SCHEMA = vol.All(vol.Coerce(int), vol.Range(min=1))
 
 
@@ -42,6 +56,10 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_delete_reading)
     websocket_api.async_register_command(hass, websocket_card_add_reading)
     websocket_api.async_register_command(hass, websocket_export_readings)
+    websocket_api.async_register_command(
+        hass, websocket_list_export_statistics
+    )
+    websocket_api.async_register_command(hass, websocket_export_statistic)
 
 
 def _meter_for_message(
@@ -187,18 +205,93 @@ def websocket_export_readings(
     """Return every original reading as one portable CSV document."""
     if (meter := _meter_for_message(hass, connection, msg)) is None:
         return
-    connection.send_result(
-        msg["id"],
-        {
-            "filename": export_filename(meter.name),
-            "content": export_meter_csv(
+    try:
+        if meter.statistics_import_source:
+            excluded = meter.excluded_statistics_hours
+            statistics = tuple(
+                CsvStatisticsHour(
+                    start=bucket.start,
+                    end=bucket.start + timedelta(hours=1),
+                    state=bucket.cumulative + meter.statistics_baseline,
+                    change=bucket.consumption,
+                    sum=bucket.cumulative,
+                )
+                for bucket in hourly_consumption(
+                    meter.readings, meter.statistics_baseline
+                )
+                if bucket.start not in excluded
+            )
+            content = (
+                export_statistics_csv(
+                    meter.name,
+                    meter.meter_type,
+                    meter.unit,
+                    meter.statistics_import_source,
+                    statistics,
+                )
+                if statistics
+                else export_meter_csv(
+                    meter.name,
+                    meter.meter_type,
+                    meter.unit,
+                    meter.readings,
+                )
+            )
+        else:
+            content = export_meter_csv(
                 meter.name,
                 meter.meter_type,
                 meter.unit,
                 meter.readings,
-            ),
-        },
+            )
+    except CsvTransferError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(
+        msg["id"],
+        {"filename": export_filename(meter.name), "content": content},
     )
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {vol.Required("type"): WS_LIST_EXPORT_STATISTICS}
+)
+@websocket_api.async_response
+async def websocket_list_export_statistics(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return compatible long-term statistics for the export picker."""
+    connection.send_result(
+        msg["id"], await async_list_exportable_statistics(hass)
+    )
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_EXPORT_STATISTIC,
+        vol.Required(ATTR_STATISTIC_ID): str,
+        vol.Required(CONF_METER_TYPE): vol.In(METER_TYPES),
+    }
+)
+@websocket_api.async_response
+async def websocket_export_statistic(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return one physical meter's hourly history as a CSV document."""
+    try:
+        exported = await async_export_statistic(
+            hass, msg[ATTR_STATISTIC_ID], msg[CONF_METER_TYPE]
+        )
+    except CsvTransferError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    connection.send_result(msg["id"], exported)
 
 
 @websocket_api.require_admin

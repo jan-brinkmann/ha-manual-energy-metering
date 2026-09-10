@@ -1,5 +1,6 @@
 const DOMAIN = "manual_energy_metering";
 const STATIC_URL = `/${DOMAIN}_static`;
+const MAX_CSV_BYTES = 20 * 1024 * 1024;
 
 const METER_ICONS = {
   electricity: "electricity.png",
@@ -12,6 +13,7 @@ const ICONS = {
   check: "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z",
   edit: "M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87L20.71,7.04Z",
   delete: "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19C6,20.1 6.9,21 8,21H16C17.1,21 18,20.1 18,19V7H6V19Z",
+  download: "M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z",
 };
 
 const TRANSLATIONS = {
@@ -39,6 +41,23 @@ const TRANSLATIONS = {
     actions: "Actions",
     edit: "Edit",
     delete: "Delete",
+    exportCsv: "Export CSV",
+    exportedCsv: "The CSV file was downloaded.",
+    importTitle: "Import meter from CSV",
+    importDescription:
+      "Select a CSV file exported by Manual Energy Metering. The original name is suggested and can be replaced.",
+    csvFile: "CSV file",
+    importedMeterName: "Name of the new meter",
+    importedMeterDetails: "{count} readings · {type} · {unit}",
+    importMeter: "Continue with this meter",
+    importComplete:
+      "The CSV data was accepted. Return to the Home Assistant setup dialog to configure photo recognition and finish creating the meter.",
+    closeImport: "Close import page",
+    meterTypes: {
+      electricity: "Electricity",
+      gas: "Gas",
+      water: "Water",
+    },
     empty: "No meter readings have been recorded yet.",
     loading: "Loading meter readings...",
     added: "The meter reading was added.",
@@ -59,6 +78,21 @@ const TRANSLATIONS = {
       reading_not_found: "This meter reading no longer exists.",
       timestamp_exists:
         "Another reading already exists at the selected date and time.",
+      csv_invalid_size: "Select a non-empty CSV file up to 20 MiB.",
+      csv_invalid_encoding: "The CSV file must use UTF-8 encoding.",
+      csv_invalid_format: "This is not a valid exported meter CSV file.",
+      csv_inconsistent_metadata: "The meter details differ between CSV rows.",
+      csv_invalid_reading: "A CSV reading is incomplete or invalid.",
+      csv_too_many_readings: "The CSV file contains too many readings.",
+      csv_unsupported_version: "This CSV format version is not supported.",
+      csv_invalid_meter: "The meter type and unit in the CSV do not match.",
+      csv_duplicate_timestamp: "The CSV contains duplicate reading times.",
+      csv_non_monotonic: "The readings in the CSV decrease over time.",
+      csv_invalid_timestamp: "The CSV contains an invalid reading time.",
+      csv_invalid_value: "The CSV contains an invalid meter reading.",
+      csv_invalid_name: "Enter a name for the new meter.",
+      csv_flow_not_found: "The import has expired. Start it again.",
+      csv_import_failed: "The CSV file could not be imported.",
     },
   },
   de: {
@@ -85,6 +119,23 @@ const TRANSLATIONS = {
     actions: "Aktionen",
     edit: "Bearbeiten",
     delete: "Löschen",
+    exportCsv: "CSV exportieren",
+    exportedCsv: "Die CSV-Datei wurde heruntergeladen.",
+    importTitle: "Zähler aus CSV importieren",
+    importDescription:
+      "Wähle eine von der Manuellen Energiemessung exportierte CSV-Datei. Der ursprüngliche Name wird vorgeschlagen und kann ersetzt werden.",
+    csvFile: "CSV-Datei",
+    importedMeterName: "Name des neuen Zählers",
+    importedMeterDetails: "{count} Zählerstände · {type} · {unit}",
+    importMeter: "Mit diesem Zähler fortfahren",
+    importComplete:
+      "Die CSV-Daten wurden übernommen. Kehre zum Einrichtungsdialog von Home Assistant zurück, konfiguriere die Fotoerkennung und schließe das Anlegen des Zählers ab.",
+    closeImport: "Importseite schließen",
+    meterTypes: {
+      electricity: "Strom",
+      gas: "Gas",
+      water: "Wasser",
+    },
     empty: "Es wurden noch keine Zählerstände erfasst.",
     loading: "Zählerstände werden geladen...",
     added: "Der Zählerstand wurde eingetragen.",
@@ -107,6 +158,21 @@ const TRANSLATIONS = {
       reading_not_found: "Dieser Zählerstand existiert nicht mehr.",
       timestamp_exists:
         "Zum ausgewählten Datum und Zeitpunkt existiert bereits ein anderer Zählerstand.",
+      csv_invalid_size: "Wähle eine nicht leere CSV-Datei bis 20 MiB.",
+      csv_invalid_encoding: "Die CSV-Datei muss UTF-8-kodiert sein.",
+      csv_invalid_format: "Dies ist keine gültige exportierte Zähler-CSV-Datei.",
+      csv_inconsistent_metadata: "Die Zählerangaben unterscheiden sich zwischen den CSV-Zeilen.",
+      csv_invalid_reading: "Ein CSV-Zählerstand ist unvollständig oder ungültig.",
+      csv_too_many_readings: "Die CSV-Datei enthält zu viele Zählerstände.",
+      csv_unsupported_version: "Diese Version des CSV-Formats wird nicht unterstützt.",
+      csv_invalid_meter: "Zählertyp und Einheit in der CSV passen nicht zusammen.",
+      csv_duplicate_timestamp: "Die CSV enthält doppelte Ablesezeitpunkte.",
+      csv_non_monotonic: "Die Zählerstände in der CSV fallen im Zeitverlauf.",
+      csv_invalid_timestamp: "Die CSV enthält einen ungültigen Ablesezeitpunkt.",
+      csv_invalid_value: "Die CSV enthält einen ungültigen Zählerstand.",
+      csv_invalid_name: "Gib einen Namen für den neuen Zähler ein.",
+      csv_flow_not_found: "Der Import ist abgelaufen. Starte ihn erneut.",
+      csv_import_failed: "Die CSV-Datei konnte nicht importiert werden.",
     },
   },
 };
@@ -124,9 +190,22 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._editingTimestamp = undefined;
     this._formTimestamp = undefined;
     this._formValue = "";
+    this._importFlowId = new URLSearchParams(window.location.search).get(
+      "import_flow"
+    );
+    this._importFile = undefined;
+    this._importMetadata = undefined;
+    this._importName = "";
+    this._importComplete = false;
+    this._importMessage = undefined;
   }
 
   set hass(value) {
+    if (this._importFlowId) {
+      this._hass = value;
+      this._render();
+      return;
+    }
     const oldLocale = this._locale;
     const oldTimeZone = this._timeZone;
     const entryChanged = this._syncEntryId();
@@ -151,6 +230,10 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   connectedCallback() {
+    if (this._importFlowId) {
+      this._render();
+      return;
+    }
     this._syncEntryId();
     this._formTimestamp ||= this._currentTimestamp();
     this._render();
@@ -243,6 +326,10 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   _render() {
+    if (this._importFlowId) {
+      this._renderImport();
+      return;
+    }
     const t = this._t;
     const title = this._data?.name || t.fallbackTitle;
     const unit = this._data?.unit ? ` (${this._data.unit})` : "";
@@ -284,9 +371,15 @@ class ManualEnergyMeteringPanel extends HTMLElement {
             </div>
             ${
               this._data
-                ? `<span class="count">${this._formatNumber(
-                    this._data.reading_count
-                  )}</span>`
+                ? `<div class="heading-actions">
+                    <button id="export-csv" class="secondary export-button" type="button">
+                      ${this._icon("download")}
+                      <span>${this._escape(t.exportCsv)}</span>
+                    </button>
+                    <span class="count">${this._formatNumber(
+                      this._data.reading_count
+                    )}</span>
+                  </div>`
                 : ""
             }
           </div>
@@ -312,6 +405,9 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .querySelector("#back-button")
       ?.addEventListener("click", () => window.history.back());
     this.shadowRoot
+      .querySelector("#export-csv")
+      ?.addEventListener("click", () => this._exportCsv());
+    this.shadowRoot
       .querySelector("#cancel-edit")
       ?.addEventListener("click", () => this._cancelEdit());
     this.shadowRoot.querySelectorAll("[data-action='edit']").forEach((button) =>
@@ -332,6 +428,251 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       )
     );
     this._setBusy(this._busy);
+  }
+
+  _renderImport() {
+    const t = this._t;
+    const metadata = this._importMetadata;
+    const meterType = metadata
+      ? t.meterTypes[metadata.meter_type] || metadata.meter_type
+      : "";
+    const details = metadata
+      ? t.importedMeterDetails
+          .replace("{count}", this._formatNumber(metadata.reading_count))
+          .replace("{type}", meterType)
+          .replace("{unit}", metadata.unit)
+      : "";
+
+    this.shadowRoot.innerHTML = `
+      <style>${this._styles()}</style>
+      <main class="import-page">
+        <header class="hero">
+          <button
+            id="back-button"
+            class="back-button"
+            type="button"
+            aria-label="${this._escapeAttribute(t.back)}"
+            title="${this._escapeAttribute(t.back)}"
+          ><ha-icon icon="mdi:arrow-left"></ha-icon></button>
+          <div class="hero-content">
+            <div class="eyebrow">${this._escape(t.eyebrow)}</div>
+            <h1>${this._escape(t.importTitle)}</h1>
+            <p>${this._escape(t.importDescription)}</p>
+          </div>
+        </header>
+
+        <section class="entry-card import-card">
+          ${
+            this._importComplete
+              ? `<div class="import-complete">
+                  <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+                  <p>${this._escape(t.importComplete)}</p>
+                  <button id="close-import" class="primary" type="button">
+                    ${this._icon("check")}
+                    <span>${this._escape(t.closeImport)}</span>
+                  </button>
+                </div>`
+              : `<form id="csv-import-form" class="import-form">
+                  <label>
+                    <span>${this._escape(t.csvFile)}</span>
+                    <input
+                      id="csv-import-file"
+                      type="file"
+                      accept=".csv,text/csv"
+                      ${this._busy ? "disabled" : ""}
+                    />
+                  </label>
+                  ${
+                    metadata
+                      ? `<div class="selected-csv">
+                          <strong>${this._escape(this._importFile?.name || "")}</strong>
+                          <span>${this._escape(details)}</span>
+                        </div>
+                        <label>
+                          <span>${this._escape(t.importedMeterName)}</span>
+                          <input
+                            id="imported-meter-name"
+                            type="text"
+                            maxlength="255"
+                            required
+                            value="${this._escapeAttribute(this._importName)}"
+                            ${this._busy ? "disabled" : ""}
+                          />
+                        </label>`
+                      : ""
+                  }
+                  <div class="form-actions">
+                    <button
+                      class="primary"
+                      type="submit"
+                      ${
+                        !metadata ||
+                        !this._importFile ||
+                        !this._importName.trim() ||
+                        this._busy ||
+                        !this._hass
+                          ? "disabled"
+                          : ""
+                      }
+                    >
+                      ${this._icon("add")}
+                      <span>${this._escape(t.importMeter)}</span>
+                    </button>
+                  </div>
+                </form>`
+          }
+          <div class="message ${this._escapeAttribute(
+            this._importMessage?.type || ""
+          )}" role="status" aria-live="polite">${this._escape(
+            this._importMessage?.text || ""
+          )}</div>
+        </section>
+      </main>
+    `;
+
+    this.shadowRoot
+      .querySelector("#back-button")
+      ?.addEventListener("click", () => this._closeImportPage());
+    this.shadowRoot
+      .querySelector("#csv-import-file")
+      ?.addEventListener("change", (event) => this._inspectCsvFile(event));
+    this.shadowRoot
+      .querySelector("#imported-meter-name")
+      ?.addEventListener("input", (event) => {
+        this._importName = event.target.value;
+        this._importMessage = undefined;
+        const submit = this.shadowRoot.querySelector(
+          "#csv-import-form button[type='submit']"
+        );
+        if (submit) {
+          submit.disabled = !this._importName.trim();
+        }
+        this._showMessage("", "");
+      });
+    this.shadowRoot
+      .querySelector("#csv-import-form")
+      ?.addEventListener("submit", (event) => this._submitCsvImport(event));
+    this.shadowRoot
+      .querySelector("#close-import")
+      ?.addEventListener("click", () => this._closeImportPage());
+  }
+
+  async _inspectCsvFile(event) {
+    const file = event.target.files?.[0];
+    this._importFile = undefined;
+    this._importMetadata = undefined;
+    this._importName = "";
+    this._importMessage = undefined;
+    if (!file) {
+      this._render();
+      return;
+    }
+    if (!file.size || file.size > MAX_CSV_BYTES) {
+      this._importMessage = {
+        text: this._t.errors.csv_invalid_size,
+        type: "error",
+      };
+      this._render();
+      return;
+    }
+
+    this._busy = true;
+    this._render();
+    try {
+      const response = await this._hass.fetchWithAuth(
+        `/api/${DOMAIN}/csv/inspect`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "text/csv" },
+          body: file,
+        }
+      );
+      const metadata = await this._readCsvResponse(response);
+      this._importFile = file;
+      this._importMetadata = metadata;
+      this._importName = metadata.name;
+    } catch (error) {
+      this._importMessage = {
+        text: this._localizedError(error),
+        type: "error",
+      };
+    } finally {
+      this._busy = false;
+      this._render();
+    }
+  }
+
+  async _submitCsvImport(event) {
+    event.preventDefault();
+    const name = this._importName.trim();
+    if (
+      this._busy ||
+      !this._importFile ||
+      !this._importMetadata ||
+      !name ||
+      !this._hass
+    ) {
+      if (!name) {
+        this._importMessage = {
+          text: this._t.errors.csv_invalid_name,
+          type: "error",
+        };
+        this._render();
+      }
+      return;
+    }
+
+    this._busy = true;
+    this._importMessage = undefined;
+    this._render();
+    const query = new URLSearchParams({
+      flow_id: this._importFlowId,
+      name,
+    });
+    try {
+      const response = await this._hass.fetchWithAuth(
+        `/api/${DOMAIN}/csv/import?${query.toString()}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "text/csv" },
+          body: this._importFile,
+        }
+      );
+      await this._readCsvResponse(response);
+      this._importComplete = true;
+    } catch (error) {
+      this._importMessage = {
+        text: this._localizedError(error),
+        type: "error",
+      };
+    } finally {
+      this._busy = false;
+      this._render();
+    }
+  }
+
+  async _readCsvResponse(response) {
+    let payload;
+    try {
+      payload = await response.json();
+    } catch (_error) {
+      throw new Error(this._t.genericError);
+    }
+    if (!response.ok) {
+      const error = new Error(payload?.message || this._t.genericError);
+      error.code = payload?.code;
+      throw error;
+    }
+    return payload;
+  }
+
+  _closeImportPage() {
+    window.close();
+    window.setTimeout(() => {
+      if (!window.closed) {
+        window.history.back();
+      }
+    }, 100);
   }
 
   _renderEntryForm(unit) {
@@ -389,6 +730,33 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         </form>
       </section>
     `;
+  }
+
+  async _exportCsv() {
+    if (this._busy || !this._data) {
+      return;
+    }
+    this._setBusy(true);
+    try {
+      const exported = await this._call(`${DOMAIN}/readings/export`);
+      const blob = new Blob([exported.content], {
+        type: "text/csv;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = exported.filename;
+      this.shadowRoot.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      this._busy = false;
+      this._render();
+      this._showMessage(this._t.exportedCsv, "success");
+    } catch (error) {
+      this._setBusy(false);
+      this._showMessage(this._localizedError(error), "error");
+    }
   }
 
   _renderTable(readings) {
@@ -878,6 +1246,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         align-items: center;
         margin-bottom: 18px;
       }
+      .heading-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
       .reading-form {
         display: grid;
         grid-template-columns: minmax(230px, 1.15fr) minmax(190px, 0.85fr) auto;
@@ -928,6 +1301,36 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .form-actions { display: flex; gap: 8px; margin-top: 24px; }
       .primary { height: 48px; color: var(--text-primary-color, #fff); background: var(--primary-color); }
       .secondary { height: 48px; color: var(--primary-text-color); background: var(--secondary-background-color); }
+      .export-button { height: 40px; min-height: 40px; }
+      .import-card { max-width: 876px; }
+      .import-form { display: grid; gap: 18px; }
+      .import-form input[type="file"] {
+        height: auto;
+        min-height: 48px;
+        padding: 10px 13px;
+      }
+      .selected-csv {
+        display: grid;
+        gap: 4px;
+        padding: 13px 15px;
+        border-radius: 11px;
+        color: var(--secondary-text-color);
+        background: var(--secondary-background-color);
+      }
+      .selected-csv strong {
+        color: var(--primary-text-color);
+        overflow-wrap: anywhere;
+      }
+      .import-complete {
+        display: grid;
+        justify-items: start;
+        gap: 16px;
+      }
+      .import-complete > ha-icon {
+        color: var(--success-color, #2e7d32);
+        --mdc-icon-size: 38px;
+      }
+      .import-complete p { margin-bottom: 0; line-height: 1.6; }
       .message { min-height: 0; margin-top: 0; }
       .message:not(:empty) {
         margin-top: 16px;
@@ -1022,7 +1425,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         .form-actions { flex-wrap: wrap; margin-top: 0; }
         .form-actions button { flex: 1 1 180px; }
         .readings-card { padding-top: 18px; }
-        .table-heading { padding: 0 18px; }
+        .table-heading { padding: 0 18px; flex-wrap: wrap; }
         .table-header { display: none; }
         .reading-row {
           grid-template-columns: 1fr;
@@ -1057,6 +1460,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       @media (max-width: 420px) {
         .row-actions { display: grid; grid-template-columns: 1fr 1fr; }
         .section-heading { align-items: flex-start; }
+        .heading-actions { width: 100%; justify-content: space-between; }
       }
     `;
   }

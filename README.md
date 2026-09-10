@@ -114,6 +114,10 @@ The management page lets you add, edit, delete, and browse the complete reading
 history. Readings can also be added between two existing readings. The
 interpolations are then adjusted accordingly.
 
+Use **Export CSV** on this page to download all recorded meter readings. When
+adding another meter, choose **Import an exported CSV file**. The original meter
+name is suggested during import, but you can replace it with any new name.
+
 The actions `manual_energy_metering.add_reading` and
 `manual_energy_metering.delete_reading` are also available under
 **Developer tools > Actions** and can be used in automations. Deleting a

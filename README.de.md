@@ -121,6 +121,11 @@ und die vollständige Historie ansehen. Es können auch Zählerstände hinzugef�
 werden, die zwischen zwei vorhandenen Messwerten liegen. Die Interpolationen
 werden anschließend entsprechend angepasst.
 
+Über **CSV exportieren** kannst du dort alle erfassten Zählerstände
+herunterladen. Wähle beim Hinzufügen eines weiteren Zählers **Exportierte
+CSV-Datei importieren**. Der ursprüngliche Zählername wird vorgeschlagen, kann
+beim Import aber durch einen beliebigen neuen Namen ersetzt werden.
+
 Zusätzlich stehen unter **Entwicklerwerkzeuge > Aktionen** die Aktionen
 `manual_energy_metering.add_reading` und
 `manual_energy_metering.delete_reading` für Automatisierungen zur Verfügung.

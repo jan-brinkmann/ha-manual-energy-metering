@@ -183,6 +183,30 @@ class ManualEnergyMetering:
             listener()
         return reading
 
+    async def async_import_readings(
+        self, items: list[dict[str, Any]]
+    ) -> None:
+        """Persist a complete, validated set of readings for a new meter."""
+        imported = [
+            Reading(
+                timestamp=self._normalize_timestamp(item.get("timestamp")),
+                value=self._normalize_value(item.get("value")),
+            )
+            for item in items
+        ]
+        try:
+            imported = validate_readings(imported)
+        except ValueError as err:
+            raise ReadingError("invalid_import", str(err)) from err
+
+        async with self._lock:
+            if self._readings:
+                raise ReadingError(
+                    "invalid_import",
+                    "CSV readings can only initialize an empty meter",
+                )
+            await self._async_save_readings(imported)
+
     async def async_update_reading(
         self, original_timestamp: Any, value: Any, timestamp: Any
     ) -> Reading:

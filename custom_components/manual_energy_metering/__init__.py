@@ -17,6 +17,7 @@ from .const import (
     ATTR_TIMESTAMP,
     ATTR_VALUE,
     CONF_CONFIG_ENTRY_ID,
+    CONF_IMPORTED_READINGS,
     CONF_VISION_COMPRESS_IMAGE,
     CONF_VISION_MODEL,
     CONF_VISION_PROMPT,
@@ -125,6 +126,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up one manually configured meter."""
     meter = ManualEnergyMetering(hass, entry, entry.data.get(CONF_NAME, entry.title))
     await meter.async_load()
+    imported_readings = entry.data.get(CONF_IMPORTED_READINGS)
+    if imported_readings is not None and not meter.readings:
+        await meter.async_import_readings(imported_readings)
+    if CONF_IMPORTED_READINGS in entry.data:
+        data = dict(entry.data)
+        data.pop(CONF_IMPORTED_READINGS)
+        hass.config_entries.async_update_entry(entry, data=data)
     entry.runtime_data = meter
     hass.data[DOMAIN][entry.entry_id] = meter
 

@@ -15,6 +15,13 @@ MODULE_DIR = (
 sys.path.insert(0, str(MODULE_DIR))
 
 import interpolation as interpolation_module  # noqa: E402
+from csv_transfer import (  # noqa: E402
+    CSV_COLUMNS,
+    CsvTransferError,
+    export_filename,
+    export_meter_csv,
+    parse_meter_csv_bytes,
+)
 from interpolation import (  # noqa: E402
     DuplicateTimestampError,
     Reading,
@@ -370,6 +377,94 @@ class PaginationTests(unittest.TestCase):
         )
 
 
+class CsvTransferTests(unittest.TestCase):
+    """Verify that exported meter data can be safely imported again."""
+
+    def test_round_trip_preserves_metadata_readings_and_unicode_name(self) -> None:
+        readings = [
+            Reading(datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc), -0.0),
+            Reading(datetime(2026, 1, 2, 12, 30, tzinfo=timezone.utc), 1e20),
+        ]
+
+        exported = export_meter_csv("Haus, Süd", "electricity", "kWh", readings)
+        imported = parse_meter_csv_bytes(exported.encode("utf-8"))
+
+        self.assertTrue(exported.startswith("\ufeff"))
+        self.assertIn('"Haus, Süd"', exported)
+        self.assertEqual(imported.name, "Haus, Süd")
+        self.assertEqual(imported.meter_type, "electricity")
+        self.assertEqual(imported.unit, "kWh")
+        self.assertEqual(
+            [(item.timestamp, item.value) for item in imported.readings],
+            [(item.timestamp, item.value) for item in readings],
+        )
+        self.assertEqual(
+            export_filename("Zähler / Keller"),
+            "manual-energy-metering-zahler-keller.csv",
+        )
+
+    def test_empty_meter_round_trip_preserves_its_metadata(self) -> None:
+        exported = export_meter_csv("Unused", "water", "L", [])
+
+        imported = parse_meter_csv_bytes(exported.encode("utf-8"))
+
+        self.assertEqual(imported.name, "Unused")
+        self.assertEqual(imported.meter_type, "water")
+        self.assertEqual(imported.unit, "L")
+        self.assertEqual(imported.readings, ())
+
+    def test_import_sorts_rows_chronologically(self) -> None:
+        header = ",".join(CSV_COLUMNS)
+        content = (
+            f"{header}\n"
+            "1,Archive,water,L,2026-01-02T00:00:00+00:00,12\n"
+            "1,Archive,water,L,2026-01-01T00:00:00+00:00,10\n"
+        )
+
+        imported = parse_meter_csv_bytes(content.encode())
+
+        self.assertEqual(
+            [item.value for item in imported.readings], [10.0, 12.0]
+        )
+
+    def test_invalid_imports_return_stable_error_codes(self) -> None:
+        header = ",".join(CSV_COLUMNS)
+        cases = {
+            "duplicate": (
+                "csv_duplicate_timestamp",
+                "1,Archive,water,L,2026-01-01T00:00:00+00:00,10\n"
+                "1,Archive,water,L,2026-01-01T00:00:00+00:00,11\n",
+            ),
+            "decreasing": (
+                "csv_non_monotonic",
+                "1,Archive,water,L,2026-01-01T00:00:00+00:00,10\n"
+                "1,Archive,water,L,2026-01-02T00:00:00+00:00,9\n",
+            ),
+            "wrong unit": (
+                "csv_invalid_meter",
+                "1,Archive,water,kWh,2026-01-01T00:00:00+00:00,10\n",
+            ),
+            "naive timestamp": (
+                "csv_invalid_timestamp",
+                "1,Archive,water,L,2026-01-01T00:00:00,10\n",
+            ),
+            "localized value": (
+                "csv_invalid_value",
+                '1,Archive,water,L,2026-01-01T00:00:00+00:00,"10,5"\n',
+            ),
+            "mixed empty row": (
+                "csv_invalid_reading",
+                "1,Archive,water,L,,\n"
+                "1,Archive,water,L,2026-01-01T00:00:00+00:00,10\n",
+            ),
+        }
+        for label, (expected_code, rows) in cases.items():
+            with self.subTest(label=label):
+                with self.assertRaises(CsvTransferError) as caught:
+                    parse_meter_csv_bytes(f"{header}\n{rows}".encode())
+                self.assertEqual(caught.exception.code, expected_code)
+
+
 class VisionProtocolTests(unittest.TestCase):
     """Verify safe OpenAI-compatible image requests and responses."""
 
@@ -596,6 +691,51 @@ class IntegrationIdentityTests(unittest.TestCase):
         for meter_type in ("electricity", "gas", "water"):
             icon = MODULE_DIR / "frontend" / "icons" / f"{meter_type}.png"
             self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+
+    def test_csv_export_and_new_meter_import_are_connected(self) -> None:
+        config_flow = (MODULE_DIR / "config_flow.py").read_text()
+        init = (MODULE_DIR / "__init__.py").read_text()
+        meter = (MODULE_DIR / "meter.py").read_text()
+        panel = (MODULE_DIR / "panel.py").read_text()
+        csv_http = (MODULE_DIR / "csv_http.py").read_text()
+        websocket_api = (MODULE_DIR / "websocket_api.py").read_text()
+        frontend = (MODULE_DIR / "frontend" / "panel.js").read_text()
+
+        self.assertIn(
+            'WS_EXPORT_READINGS = f"{DOMAIN}/readings/export"', websocket_api
+        )
+        self.assertIn("export_meter_csv(", websocket_api)
+        self.assertIn("meter.readings", websocket_api)
+        self.assertIn('id="export-csv"', frontend)
+        self.assertIn("_exportCsv()", frontend)
+        self.assertIn('type="file"', frontend)
+        self.assertIn('id="imported-meter-name"', frontend)
+        self.assertIn("/csv/inspect", frontend)
+        self.assertIn("/csv/import?", frontend)
+        self.assertIn('menu_options=["manual", "import_csv"]', config_flow)
+        self.assertIn("async_external_step_done", config_flow)
+        self.assertIn('request.headers.get(_HEADER_FRONTEND_BASE)', config_flow)
+        self.assertIn("self._frontend_base.rstrip('/')", config_flow)
+        self.assertIn("CONF_IMPORTED_READINGS", config_flow)
+        self.assertIn("async_import_readings", meter)
+        self.assertIn("data.pop(CONF_IMPORTED_READINGS)", init)
+        self.assertIn("CsvInspectView", panel)
+        self.assertIn("CsvImportView", panel)
+        self.assertIn("request.content.iter_chunked", csv_http)
+        self.assertIn("KEY_HASS_USER", csv_http)
+        self.assertIn("is_admin", csv_http)
+
+        for translation_path in (
+            MODULE_DIR / "strings.json",
+            MODULE_DIR / "translations" / "en.json",
+            MODULE_DIR / "translations" / "de.json",
+        ):
+            translation = json.loads(translation_path.read_text())
+            steps = translation["config"]["step"]
+            self.assertIn("manual", steps["user"]["menu_options"])
+            self.assertIn("import_csv", steps["user"]["menu_options"])
+            self.assertIn("manual", steps)
+            self.assertIn("import_csv", steps)
 
     def test_dashboard_card_is_registered_and_entity_scoped(self) -> None:
         manifest = json.loads((MODULE_DIR / "manifest.json").read_text())

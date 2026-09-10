@@ -21,6 +21,7 @@ from .const import (
     CONF_METER_TYPE,
     DOMAIN,
 )
+from .csv_transfer import export_filename, export_meter_csv
 from .interpolation import paginate_readings
 from .meter import ManualEnergyMetering, ReadingError
 
@@ -29,6 +30,7 @@ WS_ADD_READING = f"{DOMAIN}/readings/add"
 WS_UPDATE_READING = f"{DOMAIN}/readings/update"
 WS_DELETE_READING = f"{DOMAIN}/readings/delete"
 WS_CARD_ADD_READING = f"{DOMAIN}/card/add"
+WS_EXPORT_READINGS = f"{DOMAIN}/readings/export"
 PAGE_SCHEMA = vol.All(vol.Coerce(int), vol.Range(min=1))
 
 
@@ -39,6 +41,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_update_reading)
     websocket_api.async_register_command(hass, websocket_delete_reading)
     websocket_api.async_register_command(hass, websocket_card_add_reading)
+    websocket_api.async_register_command(hass, websocket_export_readings)
 
 
 def _meter_for_message(
@@ -165,6 +168,36 @@ def websocket_list_readings(
         return
     connection.send_result(
         msg["id"], _meter_payload(meter, msg.get("page"))
+    )
+
+
+@callback
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_EXPORT_READINGS,
+        vol.Required(CONF_CONFIG_ENTRY_ID): str,
+    }
+)
+def websocket_export_readings(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return every original reading as one portable CSV document."""
+    if (meter := _meter_for_message(hass, connection, msg)) is None:
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "filename": export_filename(meter.name),
+            "content": export_meter_csv(
+                meter.name,
+                meter.meter_type,
+                meter.unit,
+                meter.readings,
+            ),
+        },
     )
 
 

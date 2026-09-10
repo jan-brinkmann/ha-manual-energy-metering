@@ -15,11 +15,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN
+from .csv_http import CsvImportView, CsvInspectView
 
 PANEL_URL = f"/{DOMAIN}_static"
 PANEL_COMPONENT = f"{DOMAIN.replace('_', '-')}-panel"
 CARD_URL = f"{PANEL_URL}/card.js"
 RESOURCE_TYPE_MODULE = "module"
+_IMPORT_UI_REGISTERED = "_csv_import_ui_registered"
+_CARD_RESOURCE_REGISTERED = "_card_resource_registered"
 
 
 def _get_lovelace_resources(hass: HomeAssistant) -> Any:
@@ -66,16 +69,17 @@ async def _async_register_card_resource(
         add_extra_js_url(hass, card_url)
 
 
-async def async_register_readings_panel(hass: HomeAssistant) -> None:
-    """Register the management panel, dashboard card, and static assets."""
+async def async_register_import_ui(hass: HomeAssistant) -> None:
+    """Register the panel and endpoints needed by the external import step."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get(_IMPORT_UI_REGISTERED):
+        return
     frontend_dir = Path(__file__).parent / "frontend"
     await hass.http.async_register_static_paths(
         [StaticPathConfig(PANEL_URL, str(frontend_dir), False)]
     )
-    integration = await async_get_integration(hass, DOMAIN)
-    await _async_register_card_resource(
-        hass, f"{CARD_URL}?v={integration.version}"
-    )
+    hass.http.register_view(CsvInspectView)
+    hass.http.register_view(CsvImportView)
     await panel_custom.async_register_panel(
         hass=hass,
         frontend_url_path=DOMAIN,
@@ -84,3 +88,17 @@ async def async_register_readings_panel(hass: HomeAssistant) -> None:
         require_admin=True,
         config_panel_domain=DOMAIN,
     )
+    domain_data[_IMPORT_UI_REGISTERED] = True
+
+
+async def async_register_readings_panel(hass: HomeAssistant) -> None:
+    """Register the management panel, dashboard card, and static assets."""
+    await async_register_import_ui(hass)
+    domain_data = hass.data[DOMAIN]
+    if domain_data.get(_CARD_RESOURCE_REGISTERED):
+        return
+    integration = await async_get_integration(hass, DOMAIN)
+    await _async_register_card_resource(
+        hass, f"{CARD_URL}?v={integration.version}"
+    )
+    domain_data[_CARD_RESOURCE_REGISTERED] = True

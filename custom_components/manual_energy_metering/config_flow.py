@@ -9,6 +9,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import http
 from homeassistant.helpers.selector import (
     SelectSelector,
     SelectSelectorConfig,
@@ -20,6 +21,8 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     CONF_CLEAR_VISION_API_TOKEN,
+    CONF_CSV_CONTENT,
+    CONF_IMPORTED_READINGS,
     CONF_METER_ID,
     CONF_METER_TYPE,
     CONF_UNIT,
@@ -38,7 +41,15 @@ from .const import (
     METER_TYPES,
     UNIT_KWH,
 )
+from .csv_transfer import (
+    CsvTransferError,
+    parse_meter_csv,
+    validate_meter_name,
+)
+from .panel import async_register_import_ui
 from .vision import VisionError, chat_completions_url, normalize_vision_url
+
+_HEADER_FRONTEND_BASE = "HA-Frontend-Base"
 
 
 def _vision_schema(
@@ -126,12 +137,23 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the flow."""
         self._meter_data: dict[str, Any] = {}
+        self._import_readings: list[dict[str, Any]] | None = None
+        self._frontend_base: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Collect the meter name and type."""
+        """Choose between an empty meter and a CSV import."""
+        return self.async_show_menu(
+            step_id="user", menu_options=["manual", "import_csv"]
+        )
+
+    async def async_step_manual(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Collect the meter name and type for an empty meter."""
         if user_input is not None:
+            self._import_readings = None
             self._meter_data = user_input
             if user_input[CONF_METER_TYPE] == METER_TYPE_ELECTRICITY:
                 return await self.async_step_unit()
@@ -139,7 +161,7 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
             return await self.async_step_vision()
 
         return self.async_show_form(
-            step_id="user",
+            step_id="manual",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_NAME): str,
@@ -151,6 +173,52 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
                     ),
                 }
+            ),
+        )
+
+    async def async_step_import_csv(
+        self, user_input: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Import one exported CSV through the authenticated external panel."""
+        if user_input is not None:
+            try:
+                imported = parse_meter_csv(user_input[CONF_CSV_CONTENT])
+            except (CsvTransferError, KeyError, TypeError):
+                return await self._async_show_csv_import()
+            try:
+                name = validate_meter_name(user_input.get(CONF_NAME, ""))
+            except CsvTransferError:
+                return await self._async_show_csv_import()
+            self._meter_data = {
+                CONF_NAME: name,
+                CONF_METER_TYPE: imported.meter_type,
+                CONF_UNIT: imported.unit,
+            }
+            self._import_readings = [
+                {
+                    "timestamp": reading.timestamp.isoformat(),
+                    "value": reading.value,
+                }
+                for reading in imported.readings
+            ]
+            return self.async_external_step_done(next_step_id="vision")
+        return await self._async_show_csv_import()
+
+    async def _async_show_csv_import(self) -> dict[str, Any]:
+        """Expose the file picker used by the external import step."""
+        await async_register_import_ui(self.hass)
+        request = http.current_request.get()
+        if request is not None and (
+            frontend_base := request.headers.get(_HEADER_FRONTEND_BASE)
+        ):
+            self._frontend_base = frontend_base
+        if self._frontend_base is None:
+            raise RuntimeError("The Home Assistant frontend base URL is unavailable")
+        return self.async_external_step(
+            step_id="import_csv",
+            url=(
+                f"{self._frontend_base.rstrip('/')}/{DOMAIN}"
+                f"?import_flow={self.flow_id}"
             ),
         )
 
@@ -243,6 +311,8 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
         meter_id = uuid4().hex
         await self.async_set_unique_id(meter_id)
         self._meter_data[CONF_METER_ID] = meter_id
+        if self._import_readings is not None:
+            self._meter_data[CONF_IMPORTED_READINGS] = self._import_readings
         return self.async_create_entry(
             title=self._meter_data[CONF_NAME], data=self._meter_data
         )

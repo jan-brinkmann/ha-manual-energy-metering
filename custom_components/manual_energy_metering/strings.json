@@ -3,12 +3,23 @@
   "config": {
     "step": {
       "user": {
+        "title": "Add a meter",
+        "menu_options": {
+          "manual": "Create a new meter",
+          "import_csv": "Import an exported CSV file"
+        }
+      },
+      "manual": {
         "title": "Create a manual meter",
         "description": "Create one entity for this utility meter.",
         "data": {
           "name": "Name",
           "meter_type": "Meter type"
         }
+      },
+      "import_csv": {
+        "title": "Import a meter from CSV",
+        "description": "Open the import page, select an exported CSV file, and confirm the suggested or a new meter name."
       },
       "unit": {
         "title": "Choose the electricity unit",

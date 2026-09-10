@@ -3,12 +3,23 @@
   "config": {
     "step": {
       "user": {
+        "title": "Zähler hinzufügen",
+        "menu_options": {
+          "manual": "Neuen Zähler anlegen",
+          "import_csv": "Exportierte CSV-Datei importieren"
+        }
+      },
+      "manual": {
         "title": "Manuellen Zähler anlegen",
         "description": "Erstellt eine eigene Entität für diesen Verbrauchszähler.",
         "data": {
           "name": "Name",
           "meter_type": "Zählertyp"
         }
+      },
+      "import_csv": {
+        "title": "Zähler aus CSV importieren",
+        "description": "Öffne die Importseite, wähle eine exportierte CSV-Datei aus und bestätige den vorgeschlagenen oder einen neuen Zählernamen."
       },
       "unit": {
         "title": "Einheit des Stromzählers auswählen",

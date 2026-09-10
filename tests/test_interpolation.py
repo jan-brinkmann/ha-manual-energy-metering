@@ -736,6 +736,14 @@ class IntegrationIdentityTests(unittest.TestCase):
             self.assertIn("import_csv", steps["user"]["menu_options"])
             self.assertIn("manual", steps)
             self.assertIn("import_csv", steps)
+            import_description = steps["import_csv"]["description"]
+            self.assertIn("Home", import_description)
+            self.assertIn("CSV", import_description)
+            self.assertIn("extern", import_description.lower())
+            self.assertEqual(
+                translation["config"]["import_csv"]["description"],
+                import_description,
+            )
 
     def test_dashboard_card_is_registered_and_entity_scoped(self) -> None:
         manifest = json.loads((MODULE_DIR / "manifest.json").read_text())

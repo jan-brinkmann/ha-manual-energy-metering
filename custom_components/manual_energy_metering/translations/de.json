@@ -1,6 +1,9 @@
 {
   "title": "Manuelle Energiemessung",
   "config": {
+    "import_csv": {
+      "description": "Die Importseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine CSV-Daten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle eine exportierte CSV-Datei aus und bestätige den vorgeschlagenen oder einen neuen Zählernamen."
+    },
     "step": {
       "user": {
         "title": "Zähler hinzufügen",
@@ -19,7 +22,7 @@
       },
       "import_csv": {
         "title": "Zähler aus CSV importieren",
-        "description": "Öffne die Importseite, wähle eine exportierte CSV-Datei aus und bestätige den vorgeschlagenen oder einen neuen Zählernamen."
+        "description": "Die Importseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine CSV-Daten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle eine exportierte CSV-Datei aus und bestätige den vorgeschlagenen oder einen neuen Zählernamen."
       },
       "unit": {
         "title": "Einheit des Stromzählers auswählen",

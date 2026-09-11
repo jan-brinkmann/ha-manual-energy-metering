@@ -15,11 +15,18 @@ from homeassistant.components.http import (
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import Unauthorized
 
-from .const import CONF_CSV_CONTENT, DOMAIN
+from .const import (
+    CONF_CSV_CONTENT,
+    CONF_UNIT,
+    DOMAIN,
+    ELECTRICITY_UNITS,
+    METER_TYPE_ELECTRICITY,
+)
 from .csv_transfer import (
     MAX_CSV_BYTES,
     CsvTransferError,
     MeterCsv,
+    convert_meter_csv_unit,
     decode_csv,
     parse_meter_csv,
     validate_meter_name,
@@ -86,6 +93,11 @@ class CsvInspectView(HomeAssistantView):
                 "reading_count": len(imported.readings),
                 "statistics_count": len(imported.statistics),
                 "format_version": imported.format_version,
+                "available_units": (
+                    list(ELECTRICITY_UNITS)
+                    if imported.meter_type == METER_TYPE_ELECTRICITY
+                    else [imported.unit]
+                ),
             }
         )
 
@@ -104,6 +116,9 @@ class CsvImportView(HomeAssistantView):
         try:
             name = validate_meter_name(request.query.get("name", ""))
             content, imported = await _read_csv(request)
+            imported = convert_meter_csv_unit(
+                imported, request.query.get(CONF_UNIT, imported.unit)
+            )
         except CsvTransferError as err:
             return _error_response(err.code, str(err))
         if not flow_id:
@@ -113,7 +128,11 @@ class CsvImportView(HomeAssistantView):
         try:
             result = await hass.config_entries.flow.async_configure(
                 flow_id,
-                {"name": name, CONF_CSV_CONTENT: content},
+                {
+                    "name": name,
+                    CONF_CSV_CONTENT: content,
+                    CONF_UNIT: imported.unit,
+                },
             )
         except data_entry_flow.UnknownFlow:
             return _error_response(

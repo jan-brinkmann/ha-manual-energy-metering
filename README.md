@@ -114,24 +114,27 @@ The management page lets you add, edit, delete, and browse the complete reading
 history. Readings can also be added between two existing readings. The
 interpolations are then adjusted accordingly.
 
-Use **Export CSV** on this page to download all recorded meter readings. When
-adding another meter, choose **Import an exported CSV file**. The original meter
-name is suggested during import, but you can replace it with any new name.
+Use **Export CSV** on this page to download all recorded meter readings. For an
+electricity meter, choose whether the CSV uses `Wh` or `kWh`. When adding
+another meter, choose **Import an exported CSV file**. The original meter name
+is suggested during import, but you can replace it with any new name and choose
+`Wh` or `kWh` for an imported electricity meter.
 
 You can also transfer the hourly history of a compatible physical meter from
 one Home Assistant instance to another:
 
 1. On the source instance, open **Settings > Devices & services > Add
    integration > Manual Energy Metering**.
-2. Choose **Export an Energy Dashboard meter**, select its long-term statistic
-   and meter type, and download the CSV file.
+2. Choose **Export an Energy Dashboard meter**, select its meter and type,
+   choose `Wh` or `kWh` for electricity, and download the CSV file.
 3. On the target instance, add **Manual Energy Metering** again and choose
    **Import an exported CSV file**.
 
-Energy histories are exported in `kWh`, volume histories in `L`. Existing gaps
-in the hourly history remain gaps after import. Negative hourly consumption
-caused by inaccurate source data is exported as `0`; its original value is
-retained in the CSV column `original_change` and listed on the export page.
+Electricity histories can be exported and imported in `Wh` or `kWh`. Other
+energy histories use `kWh`, and volume histories use `L`. Existing gaps in the
+hourly history remain gaps after import. Negative hourly consumption caused by
+inaccurate source data is exported as `0`; its original value is retained in
+the CSV column `original_change` and listed on the export page.
 
 The actions `manual_energy_metering.add_reading` and
 `manual_energy_metering.delete_reading` are also available under

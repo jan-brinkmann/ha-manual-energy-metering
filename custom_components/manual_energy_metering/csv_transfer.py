@@ -42,11 +42,12 @@ MAX_CSV_BYTES = 20 * 1024 * 1024
 MAX_CSV_READINGS = 100_000
 MAX_METER_NAME_LENGTH = 255
 ONE_HOUR = timedelta(hours=1)
+ELECTRICITY_CSV_UNITS = ("Wh", "kWh")
 _NUMBER_PATTERN = re.compile(
     r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"
 )
 _ALLOWED_UNITS = {
-    "electricity": frozenset({"Wh", "kWh"}),
+    "electricity": frozenset(ELECTRICITY_CSV_UNITS),
     "gas": frozenset({"kWh", "L"}),
     "water": frozenset({"L"}),
 }
@@ -93,6 +94,106 @@ class MeterCsv:
     source_statistic_id: str | None = None
     statistics: tuple[CsvStatisticsHour, ...] = ()
     excluded_hour_starts: tuple[datetime, ...] = ()
+
+
+def convert_meter_value(
+    value: float,
+    meter_type: str,
+    source_unit: str,
+    target_unit: str,
+) -> float:
+    """Convert one meter value between selectable electricity units."""
+    if (
+        meter_type not in _ALLOWED_UNITS
+        or source_unit not in _ALLOWED_UNITS[meter_type]
+        or target_unit not in _ALLOWED_UNITS[meter_type]
+    ):
+        raise CsvTransferError(
+            "csv_invalid_meter", "The meter type and unit are incompatible."
+        )
+    numeric_value = float(value)
+    if not math.isfinite(numeric_value):
+        raise CsvTransferError(
+            "csv_invalid_value", "A converted meter value is not finite."
+        )
+    if source_unit == target_unit:
+        return numeric_value
+    if meter_type != "electricity":
+        raise CsvTransferError(
+            "csv_invalid_meter", "This meter unit cannot be converted."
+        )
+    factor = 1000.0 if source_unit == "kWh" else 0.001
+    converted = numeric_value * factor
+    if not math.isfinite(converted):
+        raise CsvTransferError(
+            "csv_invalid_value", "A converted meter value is not finite."
+        )
+    return converted
+
+
+def convert_readings_unit(
+    readings: Iterable[Any],
+    meter_type: str,
+    source_unit: str,
+    target_unit: str,
+) -> tuple[CsvReading, ...]:
+    """Convert timestamped readings to the requested meter unit."""
+    return tuple(
+        CsvReading(
+            reading.timestamp,
+            convert_meter_value(
+                reading.value, meter_type, source_unit, target_unit
+            ),
+        )
+        for reading in readings
+    )
+
+
+def convert_meter_csv_unit(meter: MeterCsv, target_unit: str) -> MeterCsv:
+    """Return an imported meter converted to a selectable electricity unit."""
+    target_unit = str(target_unit).strip()
+    convert_meter_value(0, meter.meter_type, meter.unit, target_unit)
+    readings = convert_readings_unit(
+        meter.readings,
+        meter.meter_type,
+        meter.unit,
+        target_unit,
+    )
+
+    def convert_optional(value: float | None) -> float | None:
+        return (
+            None
+            if value is None
+            else convert_meter_value(
+                value, meter.meter_type, meter.unit, target_unit
+            )
+        )
+
+    statistics = tuple(
+        CsvStatisticsHour(
+            start=item.start,
+            end=item.end,
+            state=convert_optional(item.state),
+            change=convert_meter_value(
+                item.change, meter.meter_type, meter.unit, target_unit
+            ),
+            sum=convert_meter_value(
+                item.sum, meter.meter_type, meter.unit, target_unit
+            ),
+            original_change=convert_optional(item.original_change),
+        )
+        for item in meter.statistics
+    )
+    return MeterCsv(
+        name=meter.name,
+        meter_type=meter.meter_type,
+        unit=target_unit,
+        readings=readings,
+        format_version=meter.format_version,
+        source_statistic_id=meter.source_statistic_id,
+        statistics=statistics,
+        excluded_hour_starts=meter.excluded_hour_starts,
+    )
 
 
 def clamp_negative_statistics_changes(

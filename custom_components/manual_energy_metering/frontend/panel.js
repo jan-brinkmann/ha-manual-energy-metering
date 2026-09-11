@@ -1,12 +1,15 @@
 const DOMAIN = "manual_energy_metering";
 const STATIC_URL = `/${DOMAIN}_static`;
 const MAX_CSV_BYTES = 20 * 1024 * 1024;
+const STATISTICS_PAGE_SIZE = 100;
+const ELECTRICITY_UNITS = ["Wh", "kWh"];
 
 const METER_ICONS = {
   electricity: "electricity.png",
   gas: "gas.png",
   water: "water.png",
 };
+const METER_TYPE_ORDER = Object.keys(METER_ICONS);
 
 const ICONS = {
   add: "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z",
@@ -42,19 +45,34 @@ const TRANSLATIONS = {
     edit: "Edit",
     delete: "Delete",
     exportCsv: "Export CSV",
+    exportUnit: "CSV unit",
     exportedCsv: "The CSV file was downloaded.",
     statisticsExportTitle: "Export an Energy Dashboard meter",
     statisticsExportDescription:
-      "Select a compatible long-term statistic. Its complete hourly history is exported and can be imported as a new Manual Energy Metering meter in another Home Assistant instance.",
-    statisticsSource: "Long-term statistic",
+      "Select a compatible meter. For Manual Energy Metering meters, only the entered readings are exported; for other meters, the hourly history is exported.",
+    statisticsSource: "Meter",
+    statisticsSearch: "Search meters",
+    statisticsSearchPlaceholder: "Part of the entity name or entity ID",
+    statisticsTypeFilter: "Filter by meter type",
+    statisticsAllTypes: "All meter types",
+    statisticsSourceFilter: "Filter by integration",
+    statisticsAllSources: "All compatible meters",
+    statisticsManualSource: "Manual Energy Metering",
+    statisticsOtherSources: "Other integrations",
+    statisticsResults: "Showing {from}-{to} of {count} meters",
+    statisticsNoMatches: "No meters match this search.",
+    statisticsFirstReading: "First meter reading",
+    statisticsLastReading: "Last meter reading",
+    statisticsReadingUnavailable: "Not available",
+    statisticsExpectedReadings: "Expected CSV measurements: {count}",
     statisticsMeterType: "Meter type",
     statisticsUnitConversion: "{source} is exported as {target}.",
-    exportStatistics: "Export hourly history",
+    exportStatistics: "Export meter",
     loadingStatistics: "Loading compatible long-term statistics...",
     noStatistics:
       "No compatible energy or volume statistics with a sum were found.",
     statisticsExported:
-      "The hourly history was downloaded. You can now import this CSV file in the target instance.",
+      "The meter was downloaded. You can now import this CSV file in the target instance.",
     statisticsNegativeWarning:
       "Consumption was negative during the following hours and was replaced with 0 for the export:",
     closeExport: "Close export page",
@@ -63,6 +81,7 @@ const TRANSLATIONS = {
       "Select a CSV file exported by Manual Energy Metering. The original name is suggested and can be replaced.",
     csvFile: "CSV file",
     importedMeterName: "Name of the new meter",
+    importedMeterUnit: "Unit of the imported electricity meter",
     importedMeterDetails: "{count} readings · {type} · {unit}",
     importedStatisticsDetails: "{count} hourly values · {type} · {unit}",
     importMeter: "Continue with this meter",
@@ -115,6 +134,8 @@ const TRANSLATIONS = {
         "The selected long-term statistic is no longer available.",
       statistics_invalid_meter_type:
         "The selected meter type does not match this statistic.",
+      statistics_invalid_unit:
+        "The selected export unit does not match this meter.",
       statistics_invalid_data:
         "The long-term statistic contains invalid hourly data.",
       statistics_decreasing:
@@ -147,19 +168,34 @@ const TRANSLATIONS = {
     edit: "Bearbeiten",
     delete: "Löschen",
     exportCsv: "CSV exportieren",
+    exportUnit: "CSV-Einheit",
     exportedCsv: "Die CSV-Datei wurde heruntergeladen.",
     statisticsExportTitle: "Energy-Dashboard-Zähler exportieren",
     statisticsExportDescription:
-      "Wähle eine kompatible Langzeitstatistik. Ihre vollständige Stundenhistorie wird exportiert und kann in einer anderen Home-Assistant-Instanz als neuer Zähler der Manuellen Energiemessung importiert werden.",
-    statisticsSource: "Langzeitstatistik",
+      "Wähle einen kompatiblen Zähler. Bei Zählern der Manuellen Energiemessung werden nur die eingetragenen Zählerstände exportiert, bei anderen Zählern die Stundenhistorie.",
+    statisticsSource: "Zähler",
+    statisticsSearch: "Zähler suchen",
+    statisticsSearchPlaceholder: "Teil des Entitätsnamens oder der Entitäts-ID",
+    statisticsTypeFilter: "Nach Zählertyp filtern",
+    statisticsAllTypes: "Alle Zählertypen",
+    statisticsSourceFilter: "Nach Integration filtern",
+    statisticsAllSources: "Alle kompatiblen Zähler",
+    statisticsManualSource: "Manuelle Energiemessung",
+    statisticsOtherSources: "Andere Integrationen",
+    statisticsResults: "Treffer {from}-{to} von {count} Zählern",
+    statisticsNoMatches: "Keine Zähler entsprechen dieser Suche.",
+    statisticsFirstReading: "Erster Zählerstand",
+    statisticsLastReading: "Letzter Zählerstand",
+    statisticsReadingUnavailable: "Nicht verfügbar",
+    statisticsExpectedReadings: "Voraussichtliche CSV-Messwerte: {count}",
     statisticsMeterType: "Zählertyp",
     statisticsUnitConversion: "{source} wird als {target} exportiert.",
-    exportStatistics: "Stundenhistorie exportieren",
+    exportStatistics: "Zähler exportieren",
     loadingStatistics: "Kompatible Langzeitstatistiken werden geladen...",
     noStatistics:
       "Es wurden keine kompatiblen Energie- oder Volumenstatistiken mit einer Summe gefunden.",
     statisticsExported:
-      "Die Stundenhistorie wurde heruntergeladen. Du kannst diese CSV-Datei nun in der Zielinstanz importieren.",
+      "Der Zähler wurde heruntergeladen. Du kannst diese CSV-Datei nun in der Zielinstanz importieren.",
     statisticsNegativeWarning:
       "In den folgenden Stunden war der Verbrauch negativ und wurde für den Export auf 0 gesetzt:",
     closeExport: "Exportseite schließen",
@@ -168,6 +204,7 @@ const TRANSLATIONS = {
       "Wähle eine von der Manuellen Energiemessung exportierte CSV-Datei. Der ursprüngliche Name wird vorgeschlagen und kann ersetzt werden.",
     csvFile: "CSV-Datei",
     importedMeterName: "Name des neuen Zählers",
+    importedMeterUnit: "Einheit des importierten Stromzählers",
     importedMeterDetails: "{count} Zählerstände · {type} · {unit}",
     importedStatisticsDetails: "{count} Stundenwerte · {type} · {unit}",
     importMeter: "Mit diesem Zähler fortfahren",
@@ -221,6 +258,8 @@ const TRANSLATIONS = {
         "Die ausgewählte Langzeitstatistik ist nicht mehr verfügbar.",
       statistics_invalid_meter_type:
         "Der ausgewählte Zählertyp passt nicht zu dieser Statistik.",
+      statistics_invalid_unit:
+        "Die ausgewählte Exporteinheit passt nicht zu diesem Zähler.",
       statistics_invalid_data:
         "Die Langzeitstatistik enthält ungültige Stundendaten.",
       statistics_decreasing:
@@ -243,6 +282,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._editingTimestamp = undefined;
     this._formTimestamp = undefined;
     this._formValue = "";
+    this._readingsExportUnit = "";
     this._importFlowId = new URLSearchParams(window.location.search).get(
       "import_flow"
     );
@@ -252,11 +292,17 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._importFile = undefined;
     this._importMetadata = undefined;
     this._importName = "";
+    this._importUnit = "";
     this._importComplete = false;
     this._importMessage = undefined;
     this._exportStatistics = undefined;
+    this._statisticsSearch = "";
+    this._statisticsMeterTypeFilter = "";
+    this._statisticsSourceFilter = "";
+    this._statisticsPage = 1;
     this._selectedStatisticId = "";
     this._selectedMeterType = "";
+    this._selectedExportUnit = "";
     this._exportComplete = false;
     this._exportMessage = undefined;
     this._statisticsLoading = false;
@@ -337,6 +383,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._editingTimestamp = undefined;
     this._formTimestamp = undefined;
     this._formValue = "";
+    this._readingsExportUnit = "";
     return true;
   }
 
@@ -381,6 +428,9 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         return;
       }
       this._data = data;
+      if (!ELECTRICITY_UNITS.includes(this._readingsExportUnit)) {
+        this._readingsExportUnit = data.unit;
+      }
       this._page = data.page;
       this._busy = false;
       this._render();
@@ -456,6 +506,21 @@ class ManualEnergyMeteringPanel extends HTMLElement {
             ${
               this._data
                 ? `<div class="heading-actions">
+                    ${
+                      this._data.meter_type === "electricity"
+                        ? `<label class="compact-unit-picker">
+                            <span>${this._escape(t.exportUnit)}</span>
+                            <select id="readings-export-unit" ${
+                              this._busy ? "disabled" : ""
+                            }>
+                              ${this._renderUnitOptions(
+                                ELECTRICITY_UNITS,
+                                this._readingsExportUnit
+                              )}
+                            </select>
+                          </label>`
+                        : ""
+                    }
                     <button id="export-csv" class="secondary export-button" type="button">
                       ${this._icon("download")}
                       <span>${this._escape(t.exportCsv)}</span>
@@ -492,6 +557,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .querySelector("#export-csv")
       ?.addEventListener("click", () => this._exportCsv());
     this.shadowRoot
+      .querySelector("#readings-export-unit")
+      ?.addEventListener("change", (event) => {
+        this._readingsExportUnit = event.target.value;
+      });
+    this.shadowRoot
       .querySelector("#cancel-edit")
       ?.addEventListener("click", () => this._cancelEdit());
     this.shadowRoot.querySelectorAll("[data-action='edit']").forEach((button) =>
@@ -517,14 +587,29 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   _renderStatisticsExport() {
     const t = this._t;
     const statistics = this._exportStatistics || [];
+    const filteredStatistics = this._filteredExportStatistics(statistics);
+    const pageCount = Math.max(
+      1,
+      Math.ceil(filteredStatistics.length / STATISTICS_PAGE_SIZE)
+    );
+    const page = Math.min(Math.max(this._statisticsPage, 1), pageCount);
+    this._statisticsPage = page;
+    const pageStart = (page - 1) * STATISTICS_PAGE_SIZE;
+    const pageStatistics = filteredStatistics.slice(
+      pageStart,
+      pageStart + STATISTICS_PAGE_SIZE
+    );
     const selected = statistics.find(
       (item) => item.statistic_id === this._selectedStatisticId
     );
-    const meterTypes = selected?.meter_types || [];
+    const exportUnits =
+      selected && this._selectedMeterType === "electricity"
+        ? ELECTRICITY_UNITS
+        : [selected?.target_unit].filter(Boolean);
     const conversion = selected
       ? t.statisticsUnitConversion
           .replace("{source}", selected.source_unit || "-")
-          .replace("{target}", selected.target_unit)
+          .replace("{target}", this._selectedExportUnit)
       : "";
 
     this.shadowRoot.innerHTML = `
@@ -566,54 +651,118 @@ class ManualEnergyMeteringPanel extends HTMLElement {
                       t.noStatistics
                     )}</div>`
                   : `<form id="statistics-export-form" class="import-form">
-                      <label>
-                        <span>${this._escape(t.statisticsSource)}</span>
-                        <select id="statistics-source" ${
-                          this._busy ? "disabled" : ""
-                        }>
-                          ${statistics
-                            .map(
-                              (item) => `<option
-                                value="${this._escapeAttribute(
-                                  item.statistic_id
-                                )}"
-                                ${
-                                  item.statistic_id === this._selectedStatisticId
-                                    ? "selected"
-                                    : ""
-                                }
-                              >${this._escape(
-                                `${item.name} (${item.statistic_id})`
-                              )}</option>`
+                      <div class="statistics-filters">
+                        <label class="statistics-search">
+                          <span>${this._escape(t.statisticsSearch)}</span>
+                          <input
+                            id="statistics-search"
+                            type="search"
+                            value="${this._escapeAttribute(
+                              this._statisticsSearch
+                            )}"
+                            placeholder="${this._escapeAttribute(
+                              t.statisticsSearchPlaceholder
+                            )}"
+                            autocomplete="off"
+                            ${this._busy ? "disabled" : ""}
+                          >
+                        </label>
+                        <label>
+                          <span>${this._escape(t.statisticsTypeFilter)}</span>
+                          <select id="statistics-type-filter" ${
+                            this._busy ? "disabled" : ""
+                          }>
+                            <option value="">${this._escape(
+                              t.statisticsAllTypes
+                            )}</option>
+                            ${Object.entries(t.meterTypes)
+                              .map(
+                                ([meterType, label]) => `<option
+                                  value="${this._escapeAttribute(meterType)}"
+                                  ${
+                                    meterType ===
+                                    this._statisticsMeterTypeFilter
+                                      ? "selected"
+                                      : ""
+                                  }
+                                >${this._escape(label)}</option>`
+                              )
+                              .join("")}
+                          </select>
+                        </label>
+                        <label>
+                          <span>${this._escape(t.statisticsSourceFilter)}</span>
+                          <select id="statistics-source-filter" ${
+                            this._busy ? "disabled" : ""
+                          }>
+                            <option value="">${this._escape(
+                              t.statisticsAllSources
+                            )}</option>
+                            <option
+                              value="manual"
+                              ${
+                                this._statisticsSourceFilter === "manual"
+                                  ? "selected"
+                                  : ""
+                              }
+                            >${this._escape(t.statisticsManualSource)}</option>
+                            <option
+                              value="other"
+                              ${
+                                this._statisticsSourceFilter === "other"
+                                  ? "selected"
+                                  : ""
+                              }
+                            >${this._escape(t.statisticsOtherSources)}</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div class="statistics-source-picker">
+                        <div class="statistics-picker-heading">
+                          <strong id="statistics-source-label">${this._escape(
+                            t.statisticsSource
+                          )}</strong>
+                          <span>${this._escape(
+                            this._formatStatisticsResults(
+                              filteredStatistics.length,
+                              pageStart
                             )
-                            .join("")}
-                        </select>
-                      </label>
-                      <label>
-                        <span>${this._escape(t.statisticsMeterType)}</span>
-                        <select id="statistics-meter-type" ${
-                          this._busy ? "disabled" : ""
-                        }>
-                          ${meterTypes
-                            .map(
-                              (meterType) => `<option
-                                value="${this._escapeAttribute(meterType)}"
-                                ${
-                                  meterType === this._selectedMeterType
-                                    ? "selected"
-                                    : ""
-                                }
-                              >${this._escape(
-                                t.meterTypes[meterType] || meterType
-                              )}</option>`
-                            )
-                            .join("")}
-                        </select>
-                        <small>${this._escape(conversion)}</small>
-                      </label>
+                          )}</span>
+                        </div>
+                        ${this._renderStatisticsList(pageStatistics)}
+                        ${this._renderStatisticsPagination(page, pageCount)}
+                      </div>
+                      ${
+                        selected
+                          ? `<div class="statistics-export-details">
+                              <span><strong>${this._escape(
+                                t.statisticsMeterType
+                              )}:</strong> ${this._escape(
+                                t.meterTypes[this._selectedMeterType] ||
+                                  this._selectedMeterType
+                              )}</span>
+                              ${
+                                exportUnits.length > 1
+                                  ? `<label>
+                                      <span>${this._escape(t.exportUnit)}</span>
+                                      <select id="statistics-export-unit" ${
+                                        this._busy ? "disabled" : ""
+                                      }>
+                                        ${this._renderUnitOptions(
+                                          exportUnits,
+                                          this._selectedExportUnit
+                                        )}
+                                      </select>
+                                    </label>`
+                                  : ""
+                              }
+                              <small>${this._escape(conversion)}</small>
+                            </div>`
+                          : ""
+                      }
                       <div class="form-actions">
                         <button class="primary" type="submit" ${
-                          this._busy ? "disabled" : ""
+                          this._busy || !selected ? "disabled" : ""
                         }>
                           ${this._icon("download")}
                           <span>${this._escape(t.exportStatistics)}</span>
@@ -637,22 +786,39 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .querySelector("#close-export")
       ?.addEventListener("click", () => this._closeImportPage());
     this.shadowRoot
-      .querySelector("#statistics-source")
-      ?.addEventListener("change", (event) => {
-        this._selectedStatisticId = event.target.value;
-        const item = this._exportStatistics.find(
-          (candidate) => candidate.statistic_id === event.target.value
-        );
-        this._selectedMeterType = item?.meter_types?.[0] || "";
-        this._exportMessage = undefined;
-        this._render();
-      });
+      .querySelector("#statistics-search")
+      ?.addEventListener("input", (event) =>
+        this._changeStatisticsSearch(event.target.value)
+      );
     this.shadowRoot
-      .querySelector("#statistics-meter-type")
-      ?.addEventListener("change", (event) => {
-        this._selectedMeterType = event.target.value;
-        this._exportMessage = undefined;
-      });
+      .querySelector("#statistics-type-filter")
+      ?.addEventListener("change", (event) =>
+        this._changeStatisticsMeterTypeFilter(event.target.value)
+      );
+    this.shadowRoot
+      .querySelector("#statistics-source-filter")
+      ?.addEventListener("change", (event) =>
+        this._changeStatisticsSourceFilter(event.target.value)
+      );
+    this.shadowRoot
+      .querySelector("#statistics-export-unit")
+      ?.addEventListener("change", (event) =>
+        this._changeStatisticsExportUnit(event.target.value)
+      );
+    this.shadowRoot
+      .querySelectorAll("[data-statistic-id]")
+      .forEach((button) =>
+        button.addEventListener("click", () =>
+          this._selectExportStatistic(button.dataset.statisticId)
+        )
+      );
+    this.shadowRoot
+      .querySelectorAll("[data-statistics-page]")
+      .forEach((button) =>
+        button.addEventListener("click", () =>
+          this._goToStatisticsPage(Number(button.dataset.statisticsPage))
+        )
+      );
     this.shadowRoot
       .querySelector("#statistics-export-form")
       ?.addEventListener("submit", (event) =>
@@ -660,17 +826,286 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       );
   }
 
+  _filteredExportStatistics(statistics = this._exportStatistics || []) {
+    const search = this._statisticsSearch.trim().toLocaleLowerCase();
+    return statistics.filter(
+      (item) => {
+        const matchesType =
+          !this._statisticsMeterTypeFilter ||
+          item.filter_meter_types?.includes(this._statisticsMeterTypeFilter);
+        const matchesSource =
+          !this._statisticsSourceFilter ||
+          (this._statisticsSourceFilter === "manual"
+            ? item.export_mode === "readings"
+            : item.export_mode === "statistics");
+        const matchesSearch =
+          !search ||
+          String(item.name).toLocaleLowerCase().includes(search) ||
+          String(item.statistic_id).toLocaleLowerCase().includes(search);
+        return matchesType && matchesSource && matchesSearch;
+      }
+    );
+  }
+
+  _formatStatisticsResults(count, pageStart) {
+    const first = count ? pageStart + 1 : 0;
+    const last = Math.min(pageStart + STATISTICS_PAGE_SIZE, count);
+    return this._t.statisticsResults
+      .replace("{from}", this._formatNumber(first))
+      .replace("{to}", this._formatNumber(last))
+      .replace("{count}", this._formatNumber(count));
+  }
+
+  _formatStatisticsReading(reading, unit) {
+    const value = Number(reading?.value);
+    if (!reading?.timestamp || !Number.isFinite(value)) {
+      return this._t.statisticsReadingUnavailable;
+    }
+    const formattedValue = `${this._formatNumber(value)}${
+      unit ? ` ${unit}` : ""
+    }`;
+    return `${formattedValue} · ${this._formatDate(reading.timestamp)}`;
+  }
+
+  _formatStatisticsReadingCount(count) {
+    const value = Number.isInteger(count) && count >= 0 ? count : 0;
+    return this._t.statisticsExpectedReadings.replace(
+      "{count}",
+      this._formatNumber(value)
+    );
+  }
+
+  _renderStatisticsList(statistics) {
+    if (!statistics.length) {
+      return `<div class="statistics-empty">${this._escape(
+        this._t.statisticsNoMatches
+      )}</div>`;
+    }
+    return `
+      <div
+        class="statistics-list"
+        role="radiogroup"
+        aria-labelledby="statistics-source-label"
+      >
+        ${statistics
+          .map((item) => {
+            const selected =
+              item.statistic_id === this._selectedStatisticId;
+            return `<button
+              class="statistics-option${selected ? " selected" : ""}"
+              type="button"
+              role="radio"
+              aria-checked="${selected}"
+              data-statistic-id="${this._escapeAttribute(item.statistic_id)}"
+              ${this._busy ? "disabled" : ""}
+            >
+              <span class="statistics-option-name">${this._escape(
+                item.name
+              )}</span>
+              <code>${this._escape(item.statistic_id)}</code>
+              <span class="statistics-reading-count">${this._escape(
+                this._formatStatisticsReadingCount(item.reading_count)
+              )}</span>
+              <span class="statistics-reading-grid">
+                <span class="statistics-reading">
+                  <span class="statistics-reading-label">${this._escape(
+                    this._t.statisticsFirstReading
+                  )}</span>
+                  <span>${this._escape(
+                    this._formatStatisticsReading(
+                      item.first_reading,
+                      item.source_unit
+                    )
+                  )}</span>
+                </span>
+                <span class="statistics-reading">
+                  <span class="statistics-reading-label">${this._escape(
+                    this._t.statisticsLastReading
+                  )}</span>
+                  <span>${this._escape(
+                    this._formatStatisticsReading(
+                      item.last_reading,
+                      item.source_unit
+                    )
+                  )}</span>
+                </span>
+              </span>
+            </button>`;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  _renderStatisticsPagination(page, pageCount) {
+    if (pageCount <= 1) {
+      return "";
+    }
+    const items = this._paginationItems(page, pageCount)
+      .map((item) => {
+        if (item === null) {
+          return '<span class="ellipsis" aria-hidden="true">…</span>';
+        }
+        const active = item === page;
+        return `<button
+          class="page-button${active ? " active" : ""}"
+          type="button"
+          data-statistics-page="${item}"
+          ${active ? 'aria-current="page"' : ""}
+          ${this._busy ? "disabled" : ""}
+        >${this._formatNumber(item)}</button>`;
+      })
+      .join("");
+    return `
+      <nav class="pagination statistics-pagination" aria-label="${this._escapeAttribute(
+        this._t.statisticsSource
+      )}">
+        <button
+          class="page-nav"
+          type="button"
+          data-statistics-page="${page - 1}"
+          ${page === 1 || this._busy ? "disabled" : ""}
+        >${this._escape(this._t.previous)}</button>
+        <div class="page-numbers">${items}</div>
+        <button
+          class="page-nav"
+          type="button"
+          data-statistics-page="${page + 1}"
+          ${page === pageCount || this._busy ? "disabled" : ""}
+        >${this._escape(this._t.next)}</button>
+      </nav>
+    `;
+  }
+
+  _setExportStatistic(
+    statisticId,
+    preferredMeterType = this._statisticsMeterTypeFilter
+  ) {
+    const item = (this._exportStatistics || []).find(
+      (candidate) => candidate.statistic_id === statisticId
+    );
+    this._selectedStatisticId = item?.statistic_id || "";
+    const detectedTypes = item?.filter_meter_types || [];
+    const compatibleTypes = item?.meter_types || [];
+    this._selectedMeterType =
+      detectedTypes.includes(preferredMeterType) &&
+      compatibleTypes.includes(preferredMeterType)
+        ? preferredMeterType
+        : detectedTypes.find((meterType) =>
+            compatibleTypes.includes(meterType)
+          ) || compatibleTypes[0] || "";
+    this._selectedExportUnit = item?.target_unit || "";
+  }
+
+  _selectExportStatistic(statisticId) {
+    if (this._busy || statisticId === this._selectedStatisticId) {
+      return;
+    }
+    const scrollTop =
+      this.shadowRoot.querySelector(".statistics-list")?.scrollTop || 0;
+    this._setExportStatistic(statisticId);
+    this._exportMessage = undefined;
+    this._render();
+    const list = this.shadowRoot.querySelector(".statistics-list");
+    if (list) {
+      list.scrollTop = scrollTop;
+    }
+  }
+
+  _changeStatisticsSearch(value) {
+    if (this._busy) {
+      return;
+    }
+    this._statisticsSearch = value;
+    this._statisticsPage = 1;
+    const filtered = this._filteredExportStatistics();
+    this._setExportStatistic(filtered[0]?.statistic_id || "");
+    this._exportMessage = undefined;
+    this._render();
+    const input = this.shadowRoot.querySelector("#statistics-search");
+    input?.focus();
+    input?.setSelectionRange(value.length, value.length);
+  }
+
+  _changeStatisticsMeterTypeFilter(value) {
+    if (this._busy) {
+      return;
+    }
+    this._statisticsMeterTypeFilter = value;
+    this._statisticsPage = 1;
+    const filtered = this._filteredExportStatistics();
+    this._setExportStatistic(filtered[0]?.statistic_id || "");
+    this._exportMessage = undefined;
+    this._render();
+  }
+
+  _changeStatisticsSourceFilter(value) {
+    if (this._busy) {
+      return;
+    }
+    this._statisticsSourceFilter = value;
+    this._statisticsPage = 1;
+    const filtered = this._filteredExportStatistics();
+    this._setExportStatistic(filtered[0]?.statistic_id || "");
+    this._exportMessage = undefined;
+    this._render();
+  }
+
+  _changeStatisticsExportUnit(value) {
+    if (this._busy || !ELECTRICITY_UNITS.includes(value)) {
+      return;
+    }
+    const scrollTop =
+      this.shadowRoot.querySelector(".statistics-list")?.scrollTop || 0;
+    this._selectedExportUnit = value;
+    this._exportMessage = undefined;
+    this._render();
+    const list = this.shadowRoot.querySelector(".statistics-list");
+    if (list) {
+      list.scrollTop = scrollTop;
+    }
+  }
+
+  _goToStatisticsPage(page) {
+    if (this._busy) {
+      return;
+    }
+    const filtered = this._filteredExportStatistics();
+    const pageCount = Math.max(
+      1,
+      Math.ceil(filtered.length / STATISTICS_PAGE_SIZE)
+    );
+    if (page < 1 || page > pageCount || page === this._statisticsPage) {
+      return;
+    }
+    this._statisticsPage = page;
+    const first = filtered[(page - 1) * STATISTICS_PAGE_SIZE];
+    this._setExportStatistic(first?.statistic_id || "");
+    this._exportMessage = undefined;
+    this._render();
+  }
+
   async _loadExportStatistics() {
     this._statisticsLoading = true;
     this._exportMessage = undefined;
     this._render();
     try {
-      this._exportStatistics = await this._hass.callWS({
-        type: `${DOMAIN}/statistics/list`,
-      });
+      const [statistics, energyPreferences] = await Promise.all([
+        this._hass.callWS({ type: `${DOMAIN}/statistics/list` }),
+        this._hass
+          .callWS({ type: "energy/get_prefs" })
+          .catch(() => undefined),
+      ]);
+      this._exportStatistics = this._classifyExportStatistics(
+        statistics,
+        energyPreferences
+      );
+      this._statisticsSearch = "";
+      this._statisticsMeterTypeFilter = "";
+      this._statisticsSourceFilter = "";
+      this._statisticsPage = 1;
       const first = this._exportStatistics[0];
-      this._selectedStatisticId = first?.statistic_id || "";
-      this._selectedMeterType = first?.meter_types?.[0] || "";
+      this._setExportStatistic(first?.statistic_id || "");
     } catch (error) {
       this._exportStatistics = [];
       this._exportMessage = {
@@ -683,12 +1118,87 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  _classifyExportStatistics(statistics, energyPreferences) {
+    const dashboardTypes = this._energyDashboardMeterTypes(energyPreferences);
+    return statistics.map((item) => {
+      const configuredTypes = dashboardTypes.get(item.statistic_id);
+      const compatibleTypes = item.meter_types || [];
+      let detectedTypes = item.known_meter_type
+        ? [item.known_meter_type]
+        : configuredTypes
+          ? METER_TYPE_ORDER.filter((meterType) =>
+              configuredTypes.has(meterType)
+            )
+          : [];
+      detectedTypes = detectedTypes.filter((meterType) =>
+        compatibleTypes.includes(meterType)
+      );
+      if (!detectedTypes.length) {
+        detectedTypes = this._inferStatisticsMeterTypes(item).filter(
+          (meterType) => compatibleTypes.includes(meterType)
+        );
+      }
+      return {
+        ...item,
+        filter_meter_types: detectedTypes.length
+          ? detectedTypes
+          : compatibleTypes.slice(0, 1),
+      };
+    });
+  }
+
+  _energyDashboardMeterTypes(preferences) {
+    const result = new Map();
+    const add = (statisticId, meterType) => {
+      if (!statisticId || !METER_TYPE_ORDER.includes(meterType)) {
+        return;
+      }
+      if (!result.has(statisticId)) {
+        result.set(statisticId, new Set());
+      }
+      result.get(statisticId).add(meterType);
+    };
+
+    for (const source of preferences?.energy_sources || []) {
+      const meterType =
+        source.type === "gas" || source.type === "water"
+          ? source.type
+          : "electricity";
+      add(source.stat_energy_from, meterType);
+      add(source.stat_energy_to, meterType);
+      for (const flow of source.flow_from || []) {
+        add(flow.stat_energy_from, "electricity");
+      }
+      for (const flow of source.flow_to || []) {
+        add(flow.stat_energy_to, "electricity");
+      }
+    }
+    for (const device of preferences?.device_consumption || []) {
+      add(device.stat_consumption, "electricity");
+    }
+    for (const device of preferences?.device_consumption_water || []) {
+      add(device.stat_consumption, "water");
+    }
+    return result;
+  }
+
+  _inferStatisticsMeterTypes(item) {
+    const deviceClass = String(
+      this._hass?.states?.[item.statistic_id]?.attributes?.device_class || ""
+    );
+    if (deviceClass === "gas" || deviceClass === "water") {
+      return [deviceClass];
+    }
+    return [item.unit_class === "volume" ? "water" : "electricity"];
+  }
+
   async _submitStatisticsExport(event) {
     event.preventDefault();
     if (
       this._busy ||
       !this._selectedStatisticId ||
-      !this._selectedMeterType
+      !this._selectedMeterType ||
+      !this._selectedExportUnit
     ) {
       return;
     }
@@ -701,6 +1211,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         type: `${DOMAIN}/statistics/export`,
         statistic_id: this._selectedStatisticId,
         meter_type: this._selectedMeterType,
+        unit: this._selectedExportUnit,
       });
       this._correctedNegativeHours = Array.isArray(
         exported.corrected_negative_hours
@@ -780,23 +1291,10 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   _renderImport() {
     const t = this._t;
     const metadata = this._importMetadata;
-    const meterType = metadata
-      ? t.meterTypes[metadata.meter_type] || metadata.meter_type
-      : "";
-    const detailsTemplate = metadata?.statistics_count
-      ? t.importedStatisticsDetails
-      : t.importedMeterDetails;
-    const details = metadata
-      ? detailsTemplate
-          .replace(
-            "{count}",
-            this._formatNumber(
-              metadata.statistics_count || metadata.reading_count
-            )
-          )
-          .replace("{type}", meterType)
-          .replace("{unit}", metadata.unit)
-      : "";
+    const details = this._formatImportDetails(metadata);
+    const importUnits = Array.isArray(metadata?.available_units)
+      ? metadata.available_units
+      : [];
 
     this.shadowRoot.innerHTML = `
       <style>${this._styles()}</style>
@@ -839,9 +1337,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
                   </label>
                   ${
                     metadata
-                      ? `<div class="selected-csv">
+                        ? `<div class="selected-csv">
                           <strong>${this._escape(this._importFile?.name || "")}</strong>
-                          <span>${this._escape(details)}</span>
+                          <span id="selected-csv-details">${this._escape(
+                            details
+                          )}</span>
                         </div>
                         <label>
                           <span>${this._escape(t.importedMeterName)}</span>
@@ -853,7 +1353,22 @@ class ManualEnergyMeteringPanel extends HTMLElement {
                             value="${this._escapeAttribute(this._importName)}"
                             ${this._busy ? "disabled" : ""}
                           />
-                        </label>`
+                        </label>
+                        ${
+                          importUnits.length > 1
+                            ? `<label>
+                                <span>${this._escape(t.importedMeterUnit)}</span>
+                                <select id="imported-meter-unit" ${
+                                  this._busy ? "disabled" : ""
+                                }>
+                                  ${this._renderUnitOptions(
+                                    importUnits,
+                                    this._importUnit
+                                  )}
+                                </select>
+                              </label>`
+                            : ""
+                        }`
                       : ""
                   }
                   <div class="form-actions">
@@ -905,6 +1420,21 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         this._showMessage("", "");
       });
     this.shadowRoot
+      .querySelector("#imported-meter-unit")
+      ?.addEventListener("change", (event) => {
+        this._importUnit = event.target.value;
+        this._importMessage = undefined;
+        const details = this.shadowRoot.querySelector(
+          "#selected-csv-details"
+        );
+        if (details) {
+          details.textContent = this._formatImportDetails(
+            this._importMetadata
+          );
+        }
+        this._showMessage("", "");
+      });
+    this.shadowRoot
       .querySelector("#csv-import-form")
       ?.addEventListener("submit", (event) => this._submitCsvImport(event));
     this.shadowRoot
@@ -917,6 +1447,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._importFile = undefined;
     this._importMetadata = undefined;
     this._importName = "";
+    this._importUnit = "";
     this._importMessage = undefined;
     if (!file) {
       this._render();
@@ -946,6 +1477,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       this._importFile = file;
       this._importMetadata = metadata;
       this._importName = metadata.name;
+      this._importUnit = metadata.unit;
     } catch (error) {
       this._importMessage = {
         text: this._localizedError(error),
@@ -955,6 +1487,26 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       this._busy = false;
       this._render();
     }
+  }
+
+  _formatImportDetails(metadata) {
+    if (!metadata) {
+      return "";
+    }
+    const meterType =
+      this._t.meterTypes[metadata.meter_type] || metadata.meter_type;
+    const template = metadata.statistics_count
+      ? this._t.importedStatisticsDetails
+      : this._t.importedMeterDetails;
+    return template
+      .replace(
+        "{count}",
+        this._formatNumber(
+          metadata.statistics_count || metadata.reading_count
+        )
+      )
+      .replace("{type}", meterType)
+      .replace("{unit}", this._importUnit || metadata.unit);
   }
 
   async _submitCsvImport(event) {
@@ -983,6 +1535,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     const query = new URLSearchParams({
       flow_id: this._importFlowId,
       name,
+      unit: this._importUnit,
     });
     try {
       const response = await this._hass.fetchWithAuth(
@@ -1093,7 +1646,9 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
     this._setBusy(true);
     try {
-      const exported = await this._call(`${DOMAIN}/readings/export`);
+      const exported = await this._call(`${DOMAIN}/readings/export`, {
+        unit: this._readingsExportUnit || this._data.unit,
+      });
       this._downloadCsv(exported);
       this._busy = false;
       this._render();
@@ -1116,6 +1671,17 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  _renderUnitOptions(units, selectedUnit) {
+    return units
+      .map(
+        (unit) => `<option
+          value="${this._escapeAttribute(unit)}"
+          ${unit === selectedUnit ? "selected" : ""}
+        >${this._escape(unit)}</option>`
+      )
+      .join("");
   }
 
   _renderTable(readings) {
@@ -1608,7 +2174,18 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .heading-actions {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 10px;
+      }
+      .compact-unit-picker {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .compact-unit-picker select {
+        width: auto;
+        height: 40px;
+        min-width: 82px;
       }
       .reading-form {
         display: grid;
@@ -1668,6 +2245,128 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         height: auto;
         min-height: 48px;
         padding: 10px 13px;
+      }
+      .statistics-filters {
+        display: grid;
+        grid-template-columns:
+          minmax(0, 1fr) minmax(190px, 0.38fr) minmax(210px, 0.42fr);
+        gap: 16px;
+      }
+      .statistics-source-picker { display: grid; gap: 10px; min-width: 0; }
+      .statistics-picker-heading {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 16px;
+      }
+      .statistics-picker-heading strong { font-size: 0.9rem; }
+      .statistics-picker-heading span {
+        color: var(--secondary-text-color);
+        font-size: 0.78rem;
+      }
+      .statistics-list {
+        max-height: min(56vh, 580px);
+        overflow: auto;
+        border: 1px solid var(--divider-color);
+        border-radius: 11px;
+        background: var(--card-background-color);
+      }
+      .statistics-option {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: start;
+        gap: 4px;
+        width: 100%;
+        min-height: 62px;
+        margin: 0;
+        padding: 10px 13px;
+        border-bottom: 1px solid var(--divider-color);
+        border-radius: 0;
+        color: var(--primary-text-color);
+        background: transparent;
+        text-align: left;
+        text-indent: 0;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+      .statistics-option::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: transparent;
+      }
+      .statistics-option:last-child { border-bottom: 0; }
+      .statistics-option:hover {
+        background: var(--secondary-background-color);
+      }
+      .statistics-option.selected {
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+      }
+      .statistics-option.selected::before {
+        background: var(--primary-color);
+      }
+      .statistics-option-name {
+        max-width: 100%;
+        font-weight: 750;
+        overflow-wrap: anywhere;
+      }
+      .statistics-option code {
+        max-width: 100%;
+        color: var(--secondary-text-color);
+        font: 0.78rem/1.35 monospace;
+        overflow-wrap: anywhere;
+      }
+      .statistics-reading-count {
+        color: var(--secondary-text-color);
+        font-size: 0.76rem;
+        font-weight: 650;
+      }
+      .statistics-reading-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 24px;
+        width: 100%;
+        margin-top: 5px;
+      }
+      .statistics-reading {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+        color: var(--primary-text-color);
+        font-size: 0.8rem;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        overflow-wrap: anywhere;
+      }
+      .statistics-reading-label {
+        color: var(--secondary-text-color);
+        font-size: 0.7rem;
+        font-weight: 750;
+        letter-spacing: 0.025em;
+      }
+      .statistics-empty {
+        padding: 28px 16px;
+        border: 1px solid var(--divider-color);
+        border-radius: 11px;
+        color: var(--secondary-text-color);
+        text-align: center;
+      }
+      .statistics-pagination {
+        padding: 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 11px;
+      }
+      .statistics-export-details {
+        display: grid;
+        gap: 4px;
+        color: var(--primary-text-color);
+        font-size: 0.86rem;
+      }
+      .statistics-export-details small {
+        color: var(--secondary-text-color);
+        font-size: 0.76rem;
       }
       .selected-csv {
         display: grid;
@@ -1801,6 +2500,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         .reading-form { grid-template-columns: 1fr; }
         .form-actions { flex-wrap: wrap; margin-top: 0; }
         .form-actions button { flex: 1 1 180px; }
+        .statistics-filters { grid-template-columns: 1fr; }
+        .statistics-picker-heading {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 4px;
+        }
         .readings-card { padding-top: 18px; }
         .table-heading { padding: 0 18px; flex-wrap: wrap; }
         .table-header { display: none; }

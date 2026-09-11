@@ -20,11 +20,11 @@
       },
       "import_csv": {
         "title": "Import a meter from CSV",
-        "description": "The import page is part of your own Home Assistant instance. No CSV data is sent to an external website or service. Open the page, select an exported CSV file, and confirm the suggested or a new meter name."
+        "description": "The import page is part of your own Home Assistant instance. No CSV data is sent to an external website or service. Open the page, select an exported CSV file, confirm the suggested or a new meter name, and choose Wh or kWh for an electricity meter."
       },
       "export_statistics": {
         "title": "Export an Energy Dashboard meter",
-        "description": "The export page is part of your own Home Assistant instance. No statistics are sent to an external website or service. Open the page, select a compatible Energy Dashboard meter, and download its hourly history."
+        "description": "The export page is part of your own Home Assistant instance. No meter data is sent to an external website or service. Open the page, select a compatible meter, and choose Wh or kWh for an electricity meter."
       },
       "unit": {
         "title": "Choose the electricity unit",
@@ -68,7 +68,7 @@
     },
     "abort": {
       "reconfigure_successful": "The photo recognition settings were updated.",
-      "statistics_exported": "The hourly statistics were exported."
+      "statistics_exported": "The meter data was exported."
     }
   },
   "exceptions": {

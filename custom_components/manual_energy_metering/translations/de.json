@@ -20,11 +20,11 @@
       },
       "import_csv": {
         "title": "Zähler aus CSV importieren",
-        "description": "Die Importseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine CSV-Daten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle eine exportierte CSV-Datei aus und bestätige den vorgeschlagenen oder einen neuen Zählernamen."
+        "description": "Die Importseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine CSV-Daten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle eine exportierte CSV-Datei aus, bestätige den vorgeschlagenen oder einen neuen Zählernamen und wähle bei einem Stromzähler Wh oder kWh."
       },
       "export_statistics": {
         "title": "Energy-Dashboard-Zähler exportieren",
-        "description": "Die Exportseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine Statistikdaten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle einen kompatiblen Energy-Dashboard-Zähler aus und lade seine Stundenhistorie herunter."
+        "description": "Die Exportseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine Zählerdaten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle einen kompatiblen Zähler aus und wähle bei einem Stromzähler Wh oder kWh."
       },
       "unit": {
         "title": "Einheit des Stromzählers auswählen",
@@ -68,7 +68,7 @@
     },
     "abort": {
       "reconfigure_successful": "Die Einstellungen der Fotoerkennung wurden aktualisiert.",
-      "statistics_exported": "Die Stundenstatistik wurde exportiert."
+      "statistics_exported": "Die Zählerdaten wurden exportiert."
     }
   },
   "exceptions": {

@@ -122,25 +122,28 @@ werden, die zwischen zwei vorhandenen Messwerten liegen. Die Interpolationen
 werden anschließend entsprechend angepasst.
 
 Über **CSV exportieren** kannst du dort alle erfassten Zählerstände
-herunterladen. Wähle beim Hinzufügen eines weiteren Zählers **Exportierte
+herunterladen. Bei einem Stromzähler kannst du für die CSV zwischen `Wh` und
+`kWh` wählen. Wähle beim Hinzufügen eines weiteren Zählers **Exportierte
 CSV-Datei importieren**. Der ursprüngliche Zählername wird vorgeschlagen, kann
-beim Import aber durch einen beliebigen neuen Namen ersetzt werden.
+beim Import aber durch einen beliebigen neuen Namen ersetzt werden. Für einen
+importierten Stromzähler kannst du ebenfalls `Wh` oder `kWh` wählen.
 
 Du kannst außerdem die Stundenhistorie eines kompatiblen physischen Zählers von
 einer Home-Assistant-Instanz auf eine andere übertragen:
 
 1. Öffne in der Quellinstanz **Einstellungen > Geräte & Dienste > Integration
    hinzufügen > Manuelle Energiemessung**.
-2. Wähle **Energy-Dashboard-Zähler exportieren**, anschließend die
-   Langzeitstatistik und den Zählertyp, und lade die CSV-Datei herunter.
+2. Wähle **Energy-Dashboard-Zähler exportieren**, anschließend den Zähler und
+   Zählertyp, bei Strom `Wh` oder `kWh`, und lade die CSV-Datei herunter.
 3. Füge in der Zielinstanz erneut **Manuelle Energiemessung** hinzu und wähle
    **Exportierte CSV-Datei importieren**.
 
-Energiehistorien werden in `kWh`, Volumenhistorien in `L` exportiert. Vorhandene
-Lücken in der Stundenhistorie bleiben nach dem Import erhalten. Negative
+Stromhistorien können in `Wh` oder `kWh` exportiert und importiert werden.
+Andere Energiehistorien verwenden `kWh`, Volumenhistorien `L`. Vorhandene Lücken
+in der Stundenhistorie bleiben nach dem Import erhalten. Negative
 Stundenverbräuche aus fehlerhaften Quelldaten werden als `0` exportiert. Ihr
-ursprünglicher Wert bleibt in der CSV-Spalte `original_change` erhalten und
-wird außerdem auf der Exportseite aufgeführt.
+ursprünglicher Wert bleibt in der CSV-Spalte `original_change` erhalten und wird
+außerdem auf der Exportseite aufgeführt.
 
 Zusätzlich stehen unter **Entwicklerwerkzeuge > Aktionen** die Aktionen
 `manual_energy_metering.add_reading` und

@@ -45,6 +45,7 @@ from .const import (
 from .csv_transfer import (
     CsvTransferError,
     STATISTICS_CSV_FORMAT_VERSION,
+    convert_meter_csv_unit,
     parse_meter_csv,
     validate_meter_name,
 )
@@ -188,6 +189,9 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 imported = parse_meter_csv(user_input[CONF_CSV_CONTENT])
+                imported = convert_meter_csv_unit(
+                    imported, user_input.get(CONF_UNIT, imported.unit)
+                )
             except (CsvTransferError, KeyError, TypeError):
                 return await self._async_show_csv_import()
             try:

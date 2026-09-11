@@ -20,12 +20,15 @@ from .const import (
     ATTR_VALUE,
     CONF_CONFIG_ENTRY_ID,
     CONF_METER_TYPE,
+    CONF_UNIT,
     DOMAIN,
     METER_TYPES,
 )
 from .csv_transfer import (
     CsvStatisticsHour,
     CsvTransferError,
+    convert_meter_value,
+    convert_readings_unit,
     export_filename,
     export_meter_csv,
     export_statistics_csv,
@@ -195,6 +198,7 @@ def websocket_list_readings(
     {
         vol.Required("type"): WS_EXPORT_READINGS,
         vol.Required(CONF_CONFIG_ENTRY_ID): str,
+        vol.Optional(CONF_UNIT): str,
     }
 )
 def websocket_export_readings(
@@ -206,18 +210,31 @@ def websocket_export_readings(
     if (meter := _meter_for_message(hass, connection, msg)) is None:
         return
     try:
+        target_unit = str(msg.get(CONF_UNIT, meter.unit)).strip()
+        converted_baseline = convert_meter_value(
+            meter.statistics_baseline,
+            meter.meter_type,
+            meter.unit,
+            target_unit,
+        )
+        converted_readings = convert_readings_unit(
+            meter.readings,
+            meter.meter_type,
+            meter.unit,
+            target_unit,
+        )
         if meter.statistics_import_source:
             excluded = meter.excluded_statistics_hours
             statistics = tuple(
                 CsvStatisticsHour(
                     start=bucket.start,
                     end=bucket.start + timedelta(hours=1),
-                    state=bucket.cumulative + meter.statistics_baseline,
+                    state=bucket.cumulative + converted_baseline,
                     change=bucket.consumption,
                     sum=bucket.cumulative,
                 )
                 for bucket in hourly_consumption(
-                    meter.readings, meter.statistics_baseline
+                    converted_readings, converted_baseline
                 )
                 if bucket.start not in excluded
             )
@@ -225,7 +242,7 @@ def websocket_export_readings(
                 export_statistics_csv(
                     meter.name,
                     meter.meter_type,
-                    meter.unit,
+                    target_unit,
                     meter.statistics_import_source,
                     statistics,
                 )
@@ -233,23 +250,27 @@ def websocket_export_readings(
                 else export_meter_csv(
                     meter.name,
                     meter.meter_type,
-                    meter.unit,
-                    meter.readings,
+                    target_unit,
+                    converted_readings,
                 )
             )
         else:
             content = export_meter_csv(
                 meter.name,
                 meter.meter_type,
-                meter.unit,
-                meter.readings,
+                target_unit,
+                converted_readings,
             )
     except CsvTransferError as err:
         connection.send_error(msg["id"], err.code, str(err))
         return
     connection.send_result(
         msg["id"],
-        {"filename": export_filename(meter.name), "content": content},
+        {
+            "filename": export_filename(meter.name),
+            "content": content,
+            "unit": target_unit,
+        },
     )
 
 
@@ -275,6 +296,7 @@ async def websocket_list_export_statistics(
         vol.Required("type"): WS_EXPORT_STATISTIC,
         vol.Required(ATTR_STATISTIC_ID): str,
         vol.Required(CONF_METER_TYPE): vol.In(METER_TYPES),
+        vol.Optional(CONF_UNIT): str,
     }
 )
 @websocket_api.async_response
@@ -283,10 +305,13 @@ async def websocket_export_statistic(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Return one physical meter's hourly history as a CSV document."""
+    """Return one meter's entered readings or hourly history as CSV."""
     try:
         exported = await async_export_statistic(
-            hass, msg[ATTR_STATISTIC_ID], msg[CONF_METER_TYPE]
+            hass,
+            msg[ATTR_STATISTIC_ID],
+            msg[CONF_METER_TYPE],
+            msg.get(CONF_UNIT),
         )
     except CsvTransferError as err:
         connection.send_error(msg["id"], err.code, str(err))

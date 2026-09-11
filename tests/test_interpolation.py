@@ -23,6 +23,7 @@ from csv_transfer import (  # noqa: E402
     CsvTransferError,
     STATISTICS_CSV_FORMAT_VERSION,
     clamp_negative_statistics_changes,
+    convert_meter_csv_unit,
     export_filename,
     export_meter_csv,
     export_statistics_csv,
@@ -418,6 +419,69 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(imported.meter_type, "water")
         self.assertEqual(imported.unit, "L")
         self.assertEqual(imported.readings, ())
+
+    def test_electricity_csv_can_be_converted_between_wh_and_kwh(self) -> None:
+        reading = Reading(
+            datetime(2026, 1, 1, tzinfo=timezone.utc), 1.25
+        )
+        imported = parse_meter_csv_bytes(
+            export_meter_csv(
+                "Electricity", "electricity", "kWh", [reading]
+            ).encode()
+        )
+
+        converted = convert_meter_csv_unit(imported, "Wh")
+
+        self.assertEqual(converted.unit, "Wh")
+        self.assertEqual(converted.readings[0].value, 1250)
+
+    def test_statistics_csv_conversion_scales_every_numeric_value(self) -> None:
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        imported = parse_meter_csv_bytes(
+            export_statistics_csv(
+                "Electricity",
+                "electricity",
+                "Wh",
+                "sensor.electricity",
+                [
+                    CsvStatisticsHour(
+                        start=start,
+                        end=start + timedelta(hours=1),
+                        state=1250,
+                        change=250,
+                        sum=250,
+                        original_change=None,
+                    ),
+                    CsvStatisticsHour(
+                        start=start + timedelta(hours=1),
+                        end=start + timedelta(hours=2),
+                        state=1250,
+                        change=0,
+                        sum=250,
+                        original_change=-2,
+                    ),
+                ],
+            ).encode()
+        )
+
+        converted = convert_meter_csv_unit(imported, "kWh")
+
+        self.assertEqual(converted.unit, "kWh")
+        self.assertEqual(converted.readings[-1].value, 1.25)
+        self.assertEqual(converted.statistics[0].state, 1.25)
+        self.assertEqual(converted.statistics[0].change, 0.25)
+        self.assertEqual(converted.statistics[0].sum, 0.25)
+        self.assertEqual(converted.statistics[1].original_change, -0.002)
+
+    def test_non_electricity_csv_unit_cannot_be_changed(self) -> None:
+        imported = parse_meter_csv_bytes(
+            export_meter_csv("Water", "water", "L", []).encode()
+        )
+
+        with self.assertRaises(CsvTransferError) as caught:
+            convert_meter_csv_unit(imported, "kWh")
+
+        self.assertEqual(caught.exception.code, "csv_invalid_meter")
 
     def test_import_sorts_rows_chronologically(self) -> None:
         header = ",".join(CSV_COLUMNS)
@@ -959,6 +1023,10 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("CsvInspectView", panel)
         self.assertIn("CsvImportView", panel)
         self.assertIn("request.content.iter_chunked", csv_http)
+        self.assertIn('"available_units"', csv_http)
+        self.assertIn("convert_meter_csv_unit", csv_http)
+        self.assertIn("convert_meter_csv_unit", config_flow)
+        self.assertIn("CONF_UNIT: imported.unit", csv_http)
         self.assertIn("KEY_HASS_USER", csv_http)
         self.assertIn("is_admin", csv_http)
 
@@ -999,10 +1067,21 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn('statistic_type="sum"', statistics_export)
         self.assertIn('{"change", "state", "sum"}', statistics_export)
         self.assertIn("entity_entry.platform == DOMAIN", statistics_export)
+        self.assertIn("_loaded_manual_meters(hass)", statistics_export)
+        self.assertIn('"export_mode": "readings"', statistics_export)
+        self.assertIn('"export_mode": "statistics"', statistics_export)
+        self.assertIn('metadata["export_mode"] == "readings"', statistics_export)
+        self.assertIn("export_meter_csv(", statistics_export)
+        self.assertIn("meter.readings", statistics_export)
+        self.assertIn('"reading_count": len(readings)', statistics_export)
+        self.assertIn("known_meter_type", statistics_export)
         self.assertIn("async_list_exportable_statistics", websocket_api)
         self.assertIn("async_export_statistic", websocket_api)
         self.assertIn("WS_LIST_EXPORT_STATISTICS", websocket_api)
         self.assertIn("WS_EXPORT_STATISTIC", websocket_api)
+        self.assertIn("msg.get(CONF_UNIT)", websocket_api)
+        self.assertIn("requested_unit", statistics_export)
+        self.assertIn("convert_readings_unit", statistics_export)
         self.assertIn("async_step_export_statistics", config_flow)
         self.assertIn('next_step_id="statistics_exported"', config_flow)
         self.assertIn("CsvExportCompleteView", csv_http)
@@ -1013,6 +1092,35 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn('"export_flow"', frontend)
         self.assertIn("_renderStatisticsExport", frontend)
         self.assertIn("_submitStatisticsExport", frontend)
+        self.assertIn("STATISTICS_PAGE_SIZE = 100", frontend)
+        self.assertIn('id="statistics-search"', frontend)
+        self.assertIn('id="statistics-type-filter"', frontend)
+        self.assertIn('id="statistics-source-filter"', frontend)
+        self.assertIn('id="statistics-export-unit"', frontend)
+        self.assertIn('id="readings-export-unit"', frontend)
+        self.assertIn('id="imported-meter-unit"', frontend)
+        self.assertIn('unit: this._selectedExportUnit', frontend)
+        self.assertIn('unit: this._importUnit', frontend)
+        self.assertIn("_statisticsMeterTypeFilter", frontend)
+        self.assertIn("_statisticsSourceFilter", frontend)
+        self.assertIn("_changeStatisticsSourceFilter", frontend)
+        self.assertIn('item.export_mode === "readings"', frontend)
+        self.assertIn('item.export_mode === "statistics"', frontend)
+        self.assertIn("item.filter_meter_types?.includes", frontend)
+        self.assertIn("_filteredExportStatistics", frontend)
+        self.assertIn("_classifyExportStatistics", frontend)
+        self.assertIn("item.known_meter_type", frontend)
+        self.assertIn("_energyDashboardMeterTypes", frontend)
+        self.assertIn('type: "energy/get_prefs"', frontend)
+        self.assertIn("data-statistic-id", frontend)
+        self.assertIn("data-statistics-page", frontend)
+        self.assertIn(".statistics-option::before", frontend)
+        self.assertIn("appearance: none", frontend)
+        self.assertNotIn(
+            "box-shadow: inset 4px 0 0 var(--primary-color)", frontend
+        )
+        self.assertNotIn('id="statistics-source"', frontend)
+        self.assertNotIn('id="statistics-meter-type"', frontend)
         self.assertIn("/statistics/list", frontend)
         self.assertIn("/statistics/export", frontend)
         self.assertIn("/csv/export-complete?", frontend)
@@ -1021,6 +1129,16 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("_formatStatisticsHour", frontend)
         self.assertIn("_formatStatisticsCorrection", frontend)
         self.assertIn("item.value", frontend)
+        self.assertIn("_statistics_reading_bounds", statistics_export)
+        self.assertIn('func.min(Statistics.start_ts)', statistics_export)
+        self.assertIn('func.max(Statistics.start_ts)', statistics_export)
+        self.assertIn('func.count(Statistics.start_ts)', statistics_export)
+        self.assertIn('"first_reading"', statistics_export)
+        self.assertIn('"last_reading"', statistics_export)
+        self.assertIn('"reading_count"', statistics_export)
+        self.assertIn("item.first_reading", frontend)
+        self.assertIn("item.last_reading", frontend)
+        self.assertIn("item.reading_count", frontend)
 
     def test_dashboard_card_is_registered_and_entity_scoped(self) -> None:
         manifest = json.loads((MODULE_DIR / "manifest.json").read_text())
@@ -1030,11 +1148,10 @@ class IntegrationIdentityTests(unittest.TestCase):
 
         self.assertIn("frontend", manifest["dependencies"])
         self.assertIn("lovelace", manifest["dependencies"])
-        self.assertIn("async_get_integration(hass, DOMAIN)", panel)
-        self.assertIn(
-            'hass, f"{CARD_URL}?v={integration.version}"',
-            panel,
-        )
+        self.assertIn("_frontend_asset_url", panel)
+        self.assertIn("hashlib.sha256", panel)
+        self.assertIn('_frontend_asset_url, "panel.js"', panel)
+        self.assertIn('_frontend_asset_url, "card.js"', panel)
         self.assertIn("ResourceStorageCollection", panel)
         self.assertIn("CONF_RESOURCE_TYPE_WS", panel)
         self.assertIn("resources.async_create_item", panel)

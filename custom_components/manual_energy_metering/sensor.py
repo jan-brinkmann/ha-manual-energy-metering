@@ -31,7 +31,9 @@ from .const import (
     DEFAULT_VISION_COMPRESS_IMAGE,
     DOMAIN,
     MAX_RECENT_READINGS,
+    METER_TYPE_GAS,
     METER_TYPE_WATER,
+    UNIT_LITERS,
 )
 from .meter import ManualEnergyMetering
 
@@ -59,11 +61,12 @@ class ManualEnergyMeteringSensor(SensorEntity):
         self._meter = meter
         self._attr_unique_id = meter.meter_id
         self._attr_native_unit_of_measurement = meter.unit
-        self._attr_device_class = (
-            SensorDeviceClass.WATER
-            if meter.meter_type == METER_TYPE_WATER
-            else SensorDeviceClass.ENERGY
-        )
+        if meter.meter_type == METER_TYPE_WATER:
+            self._attr_device_class = SensorDeviceClass.WATER
+        elif meter.meter_type == METER_TYPE_GAS and meter.unit == UNIT_LITERS:
+            self._attr_device_class = SensorDeviceClass.GAS
+        else:
+            self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, meter.meter_id)},
             name=meter.name,

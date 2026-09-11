@@ -3,12 +3,28 @@
   "config": {
     "step": {
       "user": {
+        "title": "Add a meter",
+        "menu_options": {
+          "manual": "Create a new meter",
+          "import_csv": "Import an exported CSV file",
+          "export_statistics": "Export an Energy Dashboard meter"
+        }
+      },
+      "manual": {
         "title": "Create a manual meter",
         "description": "Create one entity for this utility meter.",
         "data": {
           "name": "Name",
           "meter_type": "Meter type"
         }
+      },
+      "import_csv": {
+        "title": "Import a meter from CSV",
+        "description": "The import page is part of your own Home Assistant instance. No CSV data is sent to an external website or service. Open the page, select an exported CSV file, confirm the suggested or a new meter name, and choose Wh or kWh for an electricity meter."
+      },
+      "export_statistics": {
+        "title": "Export an Energy Dashboard meter",
+        "description": "The export page is part of your own Home Assistant instance. No meter data is sent to an external website or service. Open the page, select a compatible meter, and choose Wh or kWh for an electricity meter."
       },
       "unit": {
         "title": "Choose the electricity unit",
@@ -51,7 +67,8 @@
       "required": "This field is required."
     },
     "abort": {
-      "reconfigure_successful": "The photo recognition settings were updated."
+      "reconfigure_successful": "The photo recognition settings were updated.",
+      "statistics_exported": "The meter data was exported."
     }
   },
   "exceptions": {

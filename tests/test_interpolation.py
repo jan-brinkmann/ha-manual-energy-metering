@@ -55,6 +55,7 @@ class HourlyConsumptionTests(unittest.TestCase):
     """Verify linear allocation into Home Assistant statistics hours."""
 
     def test_water_example_allocates_one_liter_per_hour(self) -> None:
+        """Allocate a uniform water increase to its individual hours."""
         readings = [
             Reading(datetime(2026, 1, 1, tzinfo=timezone.utc), 1),
             Reading(datetime(2026, 1, 2, tzinfo=timezone.utc), 25),
@@ -67,6 +68,7 @@ class HourlyConsumptionTests(unittest.TestCase):
         self.assertEqual(result[-1].cumulative, 24)
 
     def test_electricity_example_allocates_one_kwh_per_hour(self) -> None:
+        """Allocate a uniform electricity increase to its individual hours."""
         readings = [
             Reading(datetime(2026, 1, 1, tzinfo=timezone.utc), 1000),
             Reading(datetime(2027, 1, 1, tzinfo=timezone.utc), 9760),
@@ -79,6 +81,7 @@ class HourlyConsumptionTests(unittest.TestCase):
         self.assertEqual(result[-1].cumulative, 8760)
 
     def test_partial_hours_receive_proportional_consumption(self) -> None:
+        """Prorate consumption across partial boundary hours."""
         readings = [
             Reading(datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc), 10),
             Reading(datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc), 25),
@@ -90,6 +93,7 @@ class HourlyConsumptionTests(unittest.TestCase):
         self.assertEqual(result[-1].cumulative, 15)
 
     def test_multiple_segments_in_one_hour_are_combined(self) -> None:
+        """Combine adjacent interpolation segments within the same hour."""
         readings = [
             Reading(datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), 0),
             Reading(datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc), 5),
@@ -102,6 +106,7 @@ class HourlyConsumptionTests(unittest.TestCase):
         self.assertEqual(result[0].consumption, 20)
 
     def test_sensor_value_is_interpolated_between_future_endpoints(self) -> None:
+        """Interpolate the sensor value between known surrounding readings."""
         readings = [
             Reading(datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), 10),
             Reading(datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc), 30),
@@ -114,6 +119,7 @@ class HourlyConsumptionTests(unittest.TestCase):
         self.assertEqual(value, 17.5)
 
     def test_decreasing_reading_is_rejected(self) -> None:
+        """Reject a reading series whose cumulative value decreases."""
         readings = [
             Reading(datetime(2026, 1, 1, tzinfo=timezone.utc), 10),
             Reading(datetime(2026, 1, 2, tzinfo=timezone.utc), 9),
@@ -123,6 +129,7 @@ class HourlyConsumptionTests(unittest.TestCase):
             hourly_consumption(readings)
 
     def test_removing_middle_reading_replaces_interpolation(self) -> None:
+        """Join neighboring segments after removing an intermediate reading."""
         readings = [
             Reading(datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), 0),
             Reading(datetime(2026, 1, 1, 3, 0, tzinfo=timezone.utc), 60),
@@ -138,6 +145,7 @@ class HourlyConsumptionTests(unittest.TestCase):
         self.assertEqual([item.consumption for item in result], [15] * 6)
 
     def test_inserting_middle_reading_splits_interpolation(self) -> None:
+        """Split an existing segment around an inserted reading."""
         readings = [
             Reading(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc), 0),
             Reading(datetime(2026, 1, 1, 18, 0, tzinfo=timezone.utc), 60),
@@ -154,6 +162,7 @@ class HourlyConsumptionTests(unittest.TestCase):
         )
 
     def test_replacing_reading_updates_timestamp_and_value(self) -> None:
+        """Replace both timestamp and value of an existing reading."""
         readings = [
             Reading(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc), 10),
             Reading(datetime(2026, 1, 1, 15, 0, tzinfo=timezone.utc), 20),
@@ -173,6 +182,7 @@ class HourlyConsumptionTests(unittest.TestCase):
         self.assertEqual(updated[1], replacement_reading)
 
     def test_replacing_reading_rejects_an_occupied_timestamp(self) -> None:
+        """Reject replacement with a timestamp occupied by another reading."""
         readings = [
             Reading(datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc), 10),
             Reading(datetime(2026, 1, 1, 15, 0, tzinfo=timezone.utc), 20),
@@ -194,9 +204,11 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
 
     @staticmethod
     def _reading(hour: int, value: float) -> Reading:
+        """Create a UTC reading at a whole hour for concise test fixtures."""
         return Reading(datetime(2026, 1, 1, hour, tzinfo=timezone.utc), value)
 
     def test_identical_readings_do_not_create_an_update(self) -> None:
+        """Produce no update when old and new readings are identical."""
         readings = [self._reading(0, 0), self._reading(6, 60)]
 
         update = changed_hourly_statistics(readings, readings, 0)
@@ -205,6 +217,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual(update.upsert, ())
 
     def test_collinear_insert_preserves_every_existing_hour(self) -> None:
+        """Preserve hourly values after inserting a collinear reading."""
         old = [self._reading(0, 0), self._reading(6, 60)]
         new = [old[0], self._reading(3, 30), old[1]]
 
@@ -220,6 +233,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         calculator.assert_not_called()
 
     def test_middle_insert_updates_only_its_neighboring_intervals(self) -> None:
+        """Limit insertion updates to intervals adjacent to the new reading."""
         old = [
             self._reading(0, 0),
             self._reading(6, 60),
@@ -233,6 +247,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual([item.start.hour for item in update.upsert], list(range(6)))
 
     def test_middle_delete_updates_only_its_neighboring_intervals(self) -> None:
+        """Limit deletion updates to intervals adjacent to the removed reading."""
         old = [
             self._reading(0, 0),
             self._reading(3, 15),
@@ -247,6 +262,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual([item.start.hour for item in update.upsert], list(range(6)))
 
     def test_middle_value_change_does_not_touch_later_intervals(self) -> None:
+        """Preserve later intervals after changing a middle value."""
         old = [
             self._reading(0, 0),
             self._reading(3, 30),
@@ -261,6 +277,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual([item.start.hour for item in update.upsert], list(range(6)))
 
     def test_collinear_timestamp_change_preserves_every_hour(self) -> None:
+        """Preserve hourly values after moving a collinear reading."""
         old = [
             self._reading(0, 0),
             self._reading(3, 30),
@@ -274,6 +291,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual(update.upsert, ())
 
     def test_change_within_one_hour_preserves_the_same_hour_total(self) -> None:
+        """Avoid rewriting an hour whose total consumption stays unchanged."""
         old = [
             Reading(datetime(2026, 1, 1, 0, 10, tzinfo=timezone.utc), 0),
             Reading(datetime(2026, 1, 1, 0, 30, tzinfo=timezone.utc), 10),
@@ -287,6 +305,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual(update.upsert, ())
 
     def test_partial_hours_update_only_across_the_neighboring_boundary(self) -> None:
+        """Limit partial-hour changes to the affected neighboring boundary."""
         old = [
             Reading(datetime(2026, 1, 1, 0, 10, tzinfo=timezone.utc), 0),
             Reading(datetime(2026, 1, 1, 0, 40, tzinfo=timezone.utc), 30),
@@ -301,6 +320,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual([item.start.hour for item in update.upsert], [0, 1])
 
     def test_deleting_first_reading_only_removes_its_old_hours(self) -> None:
+        """Remove only hours uncovered after deleting the first reading."""
         old = [
             self._reading(0, 0),
             self._reading(3, 30),
@@ -315,6 +335,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual(update.upsert, ())
 
     def test_adding_earlier_reading_preserves_existing_later_hours(self) -> None:
+        """Preserve later values when extending history into the past."""
         old = [self._reading(3, 30), self._reading(6, 60)]
         new = [self._reading(0, 0), *old]
 
@@ -324,6 +345,7 @@ class HourlyStatisticsUpdateTests(unittest.TestCase):
         self.assertEqual([item.start.hour for item in update.upsert], [0, 1, 2])
 
     def test_deleting_last_reading_only_removes_its_old_hours(self) -> None:
+        """Remove only hours uncovered after deleting the last reading."""
         old = [
             self._reading(0, 0),
             self._reading(3, 30),
@@ -343,6 +365,7 @@ class PaginationTests(unittest.TestCase):
 
     @staticmethod
     def _readings(count: int) -> list[Reading]:
+        """Create an ordered sequence of hourly readings."""
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         return [
             Reading(start + timedelta(hours=index), index)
@@ -350,6 +373,7 @@ class PaginationTests(unittest.TestCase):
         ]
 
     def test_first_page_contains_only_the_ten_newest_readings(self) -> None:
+        """Place the ten newest readings on the first page."""
         readings, page, page_count = paginate_readings(self._readings(211))
 
         self.assertEqual((page, page_count), (1, 4))
@@ -358,6 +382,7 @@ class PaginationTests(unittest.TestCase):
         )
 
     def test_archive_pages_contain_up_to_one_hundred_readings(self) -> None:
+        """Place up to one hundred older readings on archive pages."""
         all_readings = self._readings(211)
 
         second, second_page, _ = paginate_readings(all_readings, 2)
@@ -376,6 +401,7 @@ class PaginationTests(unittest.TestCase):
         self.assertEqual([reading.value for reading in fourth], [0])
 
     def test_ten_or_fewer_readings_use_a_single_latest_page(self) -> None:
+        """Use one page when no archive readings exist."""
         readings, page, page_count = paginate_readings(self._readings(7), 99)
 
         self.assertEqual((page, page_count), (1, 1))
@@ -388,6 +414,7 @@ class CsvTransferTests(unittest.TestCase):
     """Verify that exported meter data can be safely imported again."""
 
     def test_round_trip_preserves_metadata_readings_and_unicode_name(self) -> None:
+        """Preserve metadata, readings, and Unicode names through CSV."""
         readings = [
             Reading(datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc), -0.0),
             Reading(datetime(2026, 1, 2, 12, 30, tzinfo=timezone.utc), 1e20),
@@ -411,6 +438,7 @@ class CsvTransferTests(unittest.TestCase):
         )
 
     def test_empty_meter_round_trip_preserves_its_metadata(self) -> None:
+        """Preserve meter metadata when a CSV contains no readings."""
         exported = export_meter_csv("Unused", "water", "L", [])
 
         imported = parse_meter_csv_bytes(exported.encode("utf-8"))
@@ -421,6 +449,7 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(imported.readings, ())
 
     def test_electricity_csv_can_be_converted_between_wh_and_kwh(self) -> None:
+        """Convert electricity readings bidirectionally between Wh and kWh."""
         reading = Reading(
             datetime(2026, 1, 1, tzinfo=timezone.utc), 1.25
         )
@@ -436,6 +465,7 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(converted.readings[0].value, 1250)
 
     def test_statistics_csv_conversion_scales_every_numeric_value(self) -> None:
+        """Scale all statistic fields during electricity unit conversion."""
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         imported = parse_meter_csv_bytes(
             export_statistics_csv(
@@ -474,6 +504,7 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(converted.statistics[1].original_change, -0.002)
 
     def test_non_electricity_csv_unit_cannot_be_changed(self) -> None:
+        """Reject selectable unit conversion for non-electricity meters."""
         imported = parse_meter_csv_bytes(
             export_meter_csv("Water", "water", "L", []).encode()
         )
@@ -484,6 +515,7 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "csv_invalid_meter")
 
     def test_import_sorts_rows_chronologically(self) -> None:
+        """Sort imported reading rows by their timestamps."""
         header = ",".join(CSV_COLUMNS)
         content = (
             f"{header}\n"
@@ -498,6 +530,7 @@ class CsvTransferTests(unittest.TestCase):
         )
 
     def test_statistics_round_trip_preserves_resets_and_gaps(self) -> None:
+        """Preserve statistic resets, excluded hours, and metadata through CSV."""
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         statistics = [
             CsvStatisticsHour(
@@ -582,6 +615,7 @@ class CsvTransferTests(unittest.TestCase):
         )
 
     def test_statistics_import_retains_physical_value_without_resets(self) -> None:
+        """Retain physical cumulative values when no statistic reset occurs."""
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         exported = export_statistics_csv(
             "Electricity",
@@ -612,6 +646,7 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(imported.readings[-1].value, 1132)
 
     def test_statistics_import_rejects_negative_consumption(self) -> None:
+        """Reject imported statistics containing negative consumption."""
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
         with self.assertRaises(CsvTransferError) as caught:
@@ -634,6 +669,7 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "csv_invalid_value")
 
     def test_negative_statistics_changes_are_clamped_and_reported(self) -> None:
+        """Clamp negative changes and retain their originals for reporting."""
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         normalized, corrected = clamp_negative_statistics_changes(
             [
@@ -696,6 +732,7 @@ class CsvTransferTests(unittest.TestCase):
         )
 
     def test_statistics_import_accepts_legacy_version_two_columns(self) -> None:
+        """Accept the original column set of version-two statistic exports."""
         header = ",".join(LEGACY_STATISTICS_CSV_COLUMNS)
         content = (
             f"{header}\n"
@@ -709,6 +746,7 @@ class CsvTransferTests(unittest.TestCase):
         self.assertIsNone(imported.statistics[0].original_change)
 
     def test_statistics_import_rejects_an_excessive_timeline(self) -> None:
+        """Reject statistic imports exceeding the permitted timeline size."""
         header = ",".join(STATISTICS_CSV_COLUMNS)
         content = (
             f"{header}\n"
@@ -724,6 +762,7 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, "csv_too_many_readings")
 
     def test_invalid_imports_return_stable_error_codes(self) -> None:
+        """Return stable machine-readable codes for malformed CSV input."""
         header = ",".join(CSV_COLUMNS)
         cases = {
             "duplicate": (
@@ -765,6 +804,7 @@ class VisionProtocolTests(unittest.TestCase):
     """Verify safe OpenAI-compatible image requests and responses."""
 
     def test_host_and_ollama_urls_are_normalized(self) -> None:
+        """Normalize provider host and Ollama endpoint variants."""
         self.assertEqual(
             normalize_vision_url("ollama:11434"), "http://ollama:11434"
         )
@@ -782,6 +822,7 @@ class VisionProtocolTests(unittest.TestCase):
         )
 
     def test_provider_url_rejects_credentials_query_and_invalid_port(self) -> None:
+        """Reject unsafe credentials, queries, and invalid provider ports."""
         invalid_urls = (
             "http://user:secret@ollama:11434",
             "http://ollama:11434?token=secret",
@@ -793,6 +834,7 @@ class VisionProtocolTests(unittest.TestCase):
                     chat_completions_url(api_url)
 
     def test_request_contains_only_prompt_and_image_content(self) -> None:
+        """Send only configured prompt and image content to the vision model."""
         request = recognition_request(
             "qwen2.5vl:7b",
             "Read the meter and return JSON.",
@@ -823,6 +865,7 @@ class VisionProtocolTests(unittest.TestCase):
         )
 
     def test_recognized_value_accepts_json_and_decimal_comma(self) -> None:
+        """Parse recognized JSON values using dot or comma decimals."""
         markdown = {
             "choices": [
                 {"message": {"content": '```json\n{"value":"123.45"}\n```'}}
@@ -836,6 +879,7 @@ class VisionProtocolTests(unittest.TestCase):
         self.assertEqual(recognized_value(decimal_comma), 12.5)
 
     def test_unreadable_and_ambiguous_values_are_rejected(self) -> None:
+        """Reject unreadable, ambiguous, or otherwise invalid model output."""
         unreadable = {
             "choices": [{"message": {"content": '{"error":"unreadable"}'}}]
         }
@@ -849,6 +893,7 @@ class VisionProtocolTests(unittest.TestCase):
             recognized_value(ambiguous)
 
     def test_image_validation_enforces_type_content_and_size(self) -> None:
+        """Enforce image MIME type, signatures, and size limits."""
         validate_image(b"\xff\xd8\xffjpeg", "image/jpeg")
         validate_image(b"\x89PNG\r\n\x1a\npng", "image/png")
         validate_image(b"RIFF\x04\x00\x00\x00WEBP", "image/webp")
@@ -869,6 +914,7 @@ class IntegrationIdentityTests(unittest.TestCase):
     """Verify the canonical domain and its derived identifiers."""
 
     def test_domain_and_identifiers_are_consistent(self) -> None:
+        """Keep the integration domain and identifiers internally consistent."""
         manifest = json.loads((MODULE_DIR / "manifest.json").read_text())
         constants = (MODULE_DIR / "const.py").read_text()
         meter = (MODULE_DIR / "meter.py").read_text()
@@ -883,6 +929,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("identifiers={(DOMAIN, meter.meter_id)}", sensor)
 
     def test_visible_integration_names(self) -> None:
+        """Expose the expected German and English integration names."""
         manifest = json.loads((MODULE_DIR / "manifest.json").read_text())
         hacs = json.loads((MODULE_DIR.parents[1] / "hacs.json").read_text())
         german = json.loads(
@@ -896,6 +943,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertEqual(german["title"], "Manuelle Energiemessung")
 
     def test_documentation_is_concise_and_ordered(self) -> None:
+        """Keep public documentation concise and structurally ordered."""
         root = MODULE_DIR.parents[1]
         english = (root / "README.md").read_text()
         german = (root / "README.de.md").read_text()
@@ -942,6 +990,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertNotIn("20 MiB", german)
 
     def test_readings_panel_replaces_the_options_flow(self) -> None:
+        """Connect the meter management panel instead of an options flow."""
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
         init = (MODULE_DIR / "__init__.py").read_text()
         meter = (MODULE_DIR / "meter.py").read_text()
@@ -991,6 +1040,7 @@ class IntegrationIdentityTests(unittest.TestCase):
             self.assertTrue(icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
 
     def test_csv_export_and_new_meter_import_are_connected(self) -> None:
+        """Connect CSV export, inspection, and new-meter import workflows."""
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
         init = (MODULE_DIR / "__init__.py").read_text()
         meter = (MODULE_DIR / "meter.py").read_text()
@@ -1050,6 +1100,7 @@ class IntegrationIdentityTests(unittest.TestCase):
             self.assertNotIn("export_statistics", translation["config"])
 
     def test_energy_dashboard_statistics_export_is_connected(self) -> None:
+        """Connect compatible Energy Dashboard statistic export."""
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
         init = (MODULE_DIR / "__init__.py").read_text()
         meter = (MODULE_DIR / "meter.py").read_text()
@@ -1141,6 +1192,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("item.reading_count", frontend)
 
     def test_dashboard_card_is_registered_and_entity_scoped(self) -> None:
+        """Register the dashboard card and scope it to one meter entity."""
         manifest = json.loads((MODULE_DIR / "manifest.json").read_text())
         panel = (MODULE_DIR / "panel.py").read_text()
         websocket_api = (MODULE_DIR / "websocket_api.py").read_text()
@@ -1229,6 +1281,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("useGrouping: false", card)
 
     def test_photo_recognition_is_independent_per_meter_and_confirmed(self) -> None:
+        """Keep recognition per meter and require confirmation before saving."""
         constants = (MODULE_DIR / "const.py").read_text()
         config_flow = (MODULE_DIR / "config_flow.py").read_text()
         init = (MODULE_DIR / "__init__.py").read_text()

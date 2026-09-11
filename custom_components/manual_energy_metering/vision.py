@@ -236,6 +236,7 @@ async def async_recognize_meter(
     payload = recognition_request(model, prompt, image_base64, mime_type)
 
     async def report_progress(stage: str) -> None:
+        """Forward a recognition stage when a progress callback was supplied."""
         if progress is not None:
             await progress(stage)
 
@@ -243,21 +244,25 @@ async def async_recognize_meter(
         """Report once aiohttp has written the complete provider request body."""
 
         def __init__(self, value: bytes) -> None:
+            """Initialize the JSON payload and its one-shot reporting state."""
             super().__init__(value, content_type="application/json")
             self._reported = False
 
         async def _report_sent(self) -> None:
+            """Emit the request-sent stage at most once."""
             if not self._reported:
                 self._reported = True
                 await report_progress("request_sent")
 
         async def write(self, writer: Any) -> None:
+            """Write the payload and report that transmission completed."""
             await super().write(writer)
             await self._report_sent()
 
         async def write_with_length(
             self, writer: Any, content_length: int
         ) -> None:
+            """Write with aiohttp's optional length-aware payload API."""
             parent_write = getattr(super(), "write_with_length", None)
             if parent_write is None:
                 await super().write(writer)

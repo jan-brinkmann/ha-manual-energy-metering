@@ -269,7 +269,9 @@ const TRANSLATIONS = {
   },
 };
 
+/** Manage readings and handle CSV import or Energy Dashboard export flows. */
 class ManualEnergyMeteringPanel extends HTMLElement {
+  /** Initialize panel routing, form, import, export, and pagination state. */
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -310,6 +312,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._exportUnit = "";
   }
 
+  /**
+   * Receive Home Assistant state and refresh data affected by route or locale.
+   *
+   * @param {object} value Home Assistant frontend state.
+   */
   set hass(value) {
     if (this._importFlowId || this._exportFlowId) {
       this._hass = value;
@@ -339,14 +346,21 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /** @returns {object | undefined} Current Home Assistant frontend state. */
   get hass() {
     return this._hass;
   }
 
+  /**
+   * Reflect Home Assistant's narrow-layout state as a host attribute.
+   *
+   * @param {boolean} value Whether the viewport uses the narrow layout.
+   */
   set narrow(value) {
     this.toggleAttribute("narrow", Boolean(value));
   }
 
+  /** Initialize the active route and load its data when attached. */
   connectedCallback() {
     if (this._importFlowId || this._exportFlowId) {
       this._render();
@@ -368,6 +382,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Synchronize meter identity from the current query string.
+   *
+   * @returns {boolean} Whether the selected config entry changed.
+   */
   _syncEntryId() {
     const entryId = new URLSearchParams(window.location.search).get(
       "config_entry"
@@ -387,10 +406,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return true;
   }
 
+  /** @returns {"de" | "en"} Active supported translation language. */
   get _language() {
     return this._locale.toLowerCase().startsWith("de") ? "de" : "en";
   }
 
+  /** @returns {string} Locale used to display numbers and timestamps. */
   get _locale() {
     return (
       this._hass?.locale?.language ||
@@ -400,14 +421,17 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     );
   }
 
+  /** @returns {string | undefined} Home Assistant's configured time zone. */
   get _timeZone() {
     return this._hass?.config?.time_zone || undefined;
   }
 
+  /** @returns {object} Translation dictionary for the active language. */
   get _t() {
     return TRANSLATIONS[this._language];
   }
 
+  /** Load the selected meter page and preserve page state on failure. */
   async _load() {
     this._loadingStarted = true;
     if (!this._editingTimestamp) {
@@ -447,6 +471,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Call a meter-scoped WebSocket command.
+   *
+   * @param {string} type WebSocket command type.
+   * @param {object} data Additional command payload.
+   * @returns {Promise<object>} Backend response.
+   */
   async _call(type, data = {}) {
     return this._hass.callWS({
       type,
@@ -455,6 +486,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     });
   }
 
+  /** Render the active meter, import, or export view and wire its events. */
   _render() {
     if (this._exportFlowId) {
       this._renderStatisticsExport();
@@ -584,6 +616,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._setBusy(this._busy);
   }
 
+  /** Render the searchable, filtered Energy Dashboard export workflow. */
   _renderStatisticsExport() {
     const t = this._t;
     const statistics = this._exportStatistics || [];
@@ -826,6 +859,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       );
   }
 
+  /**
+   * Apply the current text, meter-type, and integration filters.
+   *
+   * @param {object[]} statistics Exportable statistic descriptors.
+   * @returns {object[]} Matching descriptors in their original order.
+   */
   _filteredExportStatistics(statistics = this._exportStatistics || []) {
     const search = this._statisticsSearch.trim().toLocaleLowerCase();
     return statistics.filter(
@@ -847,6 +886,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     );
   }
 
+  /**
+   * Format the visible result range for the export picker.
+   *
+   * @param {number} count Total filtered items.
+   * @param {number} pageStart Zero-based start index.
+   * @returns {string} Localized result-range label.
+   */
   _formatStatisticsResults(count, pageStart) {
     const first = count ? pageStart + 1 : 0;
     const last = Math.min(pageStart + STATISTICS_PAGE_SIZE, count);
@@ -856,6 +902,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .replace("{count}", this._formatNumber(count));
   }
 
+  /**
+   * Format a statistic boundary reading and timestamp.
+   *
+   * @param {{value?: number, timestamp?: string} | undefined} reading Reading.
+   * @param {string} unit Source unit.
+   * @returns {string} Localized reading or unavailable label.
+   */
   _formatStatisticsReading(reading, unit) {
     const value = Number(reading?.value);
     if (!reading?.timestamp || !Number.isFinite(value)) {
@@ -867,6 +920,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return `${formattedValue} · ${this._formatDate(reading.timestamp)}`;
   }
 
+  /**
+   * Format the expected number of exported CSV values.
+   *
+   * @param {number} count Expected row count.
+   * @returns {string} Localized count label.
+   */
   _formatStatisticsReadingCount(count) {
     const value = Number.isInteger(count) && count >= 0 ? count : 0;
     return this._t.statisticsExpectedReadings.replace(
@@ -875,6 +934,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     );
   }
 
+  /**
+   * Render one page of selectable statistics.
+   *
+   * @param {object[]} statistics Statistic descriptors on the current page.
+   * @returns {string} Statistic-list HTML.
+   */
   _renderStatisticsList(statistics) {
     if (!statistics.length) {
       return `<div class="statistics-empty">${this._escape(
@@ -937,6 +1002,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     `;
   }
 
+  /**
+   * Render pagination controls for the statistic picker.
+   *
+   * @param {number} page Current one-based page.
+   * @param {number} pageCount Total pages.
+   * @returns {string} Pagination HTML or an empty string.
+   */
   _renderStatisticsPagination(page, pageCount) {
     if (pageCount <= 1) {
       return "";
@@ -977,6 +1049,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     `;
   }
 
+  /**
+   * Select a statistic and choose a compatible meter type and target unit.
+   *
+   * @param {string} statisticId Statistic identifier to select.
+   * @param {string} preferredMeterType Preferred compatible meter type.
+   */
   _setExportStatistic(
     statisticId,
     preferredMeterType = this._statisticsMeterTypeFilter
@@ -997,6 +1075,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._selectedExportUnit = item?.target_unit || "";
   }
 
+  /**
+   * Handle user selection while preserving list scroll position.
+   *
+   * @param {string} statisticId Statistic identifier to select.
+   */
   _selectExportStatistic(statisticId) {
     if (this._busy || statisticId === this._selectedStatisticId) {
       return;
@@ -1012,6 +1095,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Apply search input and reset export selection to the first match.
+   *
+   * @param {string} value Search query.
+   */
   _changeStatisticsSearch(value) {
     if (this._busy) {
       return;
@@ -1027,6 +1115,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     input?.setSelectionRange(value.length, value.length);
   }
 
+  /**
+   * Apply the meter-type filter and reset pagination and selection.
+   *
+   * @param {string} value Meter type or an empty string.
+   */
   _changeStatisticsMeterTypeFilter(value) {
     if (this._busy) {
       return;
@@ -1039,6 +1132,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._render();
   }
 
+  /**
+   * Apply the integration-source filter and reset pagination and selection.
+   *
+   * @param {string} value Source filter or an empty string.
+   */
   _changeStatisticsSourceFilter(value) {
     if (this._busy) {
       return;
@@ -1051,6 +1149,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._render();
   }
 
+  /**
+   * Select an electricity CSV unit while preserving list scroll position.
+   *
+   * @param {string} value Requested export unit.
+   */
   _changeStatisticsExportUnit(value) {
     if (this._busy || !ELECTRICITY_UNITS.includes(value)) {
       return;
@@ -1066,6 +1169,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Navigate the statistic picker and select the new page's first item.
+   *
+   * @param {number} page Target one-based page.
+   */
   _goToStatisticsPage(page) {
     if (this._busy) {
       return;
@@ -1085,6 +1193,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._render();
   }
 
+  /** Load compatible statistics and Energy Dashboard classification hints. */
   async _loadExportStatistics() {
     this._statisticsLoading = true;
     this._exportMessage = undefined;
@@ -1118,6 +1227,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Add meter-type filter metadata using configured dashboard preferences.
+   *
+   * @param {object[]} statistics Exportable statistic descriptors.
+   * @param {object | undefined} energyPreferences Energy Dashboard settings.
+   * @returns {object[]} Descriptors with detected filter meter types.
+   */
   _classifyExportStatistics(statistics, energyPreferences) {
     const dashboardTypes = this._energyDashboardMeterTypes(energyPreferences);
     return statistics.map((item) => {
@@ -1147,8 +1263,20 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     });
   }
 
+  /**
+   * Map Energy Dashboard statistic IDs to their configured meter types.
+   *
+   * @param {object | undefined} preferences Energy Dashboard settings.
+   * @returns {Map<string, Set<string>>} Meter types by statistic ID.
+   */
   _energyDashboardMeterTypes(preferences) {
     const result = new Map();
+    /**
+     * Associate one valid statistic identifier with a supported meter type.
+     *
+     * @param {string | undefined} statisticId Statistic identifier.
+     * @param {string} meterType Meter type to associate.
+     */
     const add = (statisticId, meterType) => {
       if (!statisticId || !METER_TYPE_ORDER.includes(meterType)) {
         return;
@@ -1182,6 +1310,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return result;
   }
 
+  /**
+   * Infer fallback meter types from entity device class or statistic unit.
+   *
+   * @param {object} item Statistic descriptor.
+   * @returns {string[]} Candidate meter types.
+   */
   _inferStatisticsMeterTypes(item) {
     const deviceClass = String(
       this._hass?.states?.[item.statistic_id]?.attributes?.device_class || ""
@@ -1192,6 +1326,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return [item.unit_class === "volume" ? "water" : "electricity"];
   }
 
+  /**
+   * Request, download, and acknowledge the selected statistic export.
+   *
+   * @param {SubmitEvent} event Export form submission.
+   */
   async _submitStatisticsExport(event) {
     event.preventDefault();
     if (
@@ -1246,6 +1385,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Render corrected negative hourly values reported by the exporter.
+   *
+   * @returns {string} Warning HTML or an empty string.
+   */
   _renderNegativeStatisticsWarning() {
     if (!this._correctedNegativeHours.length) {
       return "";
@@ -1267,6 +1411,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     `;
   }
 
+  /**
+   * Format a statistic's one-hour interval.
+   *
+   * @param {string} timestamp UTC hour start.
+   * @returns {string} Localized interval or the original invalid value.
+   */
   _formatStatisticsHour(timestamp) {
     const start = new Date(timestamp);
     if (Number.isNaN(start.getTime())) {
@@ -1281,6 +1431,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return `${formatter.format(start)} - ${formatter.format(end)}`;
   }
 
+  /**
+   * Format one corrected negative consumption record.
+   *
+   * @param {{start: string, value: number}} item Correction record.
+   * @returns {string} Localized interval and original value.
+   */
   _formatStatisticsCorrection(item) {
     const unit = this._exportUnit ? ` ${this._exportUnit}` : "";
     return `${this._formatStatisticsHour(item.start)}: ${this._formatNumber(
@@ -1288,6 +1444,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     )}${unit}`;
   }
 
+  /** Render the CSV inspection, naming, unit-selection, and import workflow. */
   _renderImport() {
     const t = this._t;
     const metadata = this._importMetadata;
@@ -1442,6 +1599,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       ?.addEventListener("click", () => this._closeImportPage());
   }
 
+  /**
+   * Validate a selected CSV file and request its metadata.
+   *
+   * @param {Event} event File-input change event.
+   */
   async _inspectCsvFile(event) {
     const file = event.target.files?.[0];
     this._importFile = undefined;
@@ -1489,6 +1651,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Format inspected CSV type, row count, and selected unit.
+   *
+   * @param {object | undefined} metadata CSV inspection response.
+   * @returns {string} Localized file summary or an empty string.
+   */
   _formatImportDetails(metadata) {
     if (!metadata) {
       return "";
@@ -1509,6 +1677,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .replace("{unit}", this._importUnit || metadata.unit);
   }
 
+  /**
+   * Upload the inspected CSV and selected meter settings to the config flow.
+   *
+   * @param {SubmitEvent} event Import form submission.
+   */
   async _submitCsvImport(event) {
     event.preventDefault();
     const name = this._importName.trim();
@@ -1559,6 +1732,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Decode an HTTP JSON response and raise its stable backend error.
+   *
+   * @param {Response} response CSV endpoint response.
+   * @returns {Promise<object>} Decoded successful response.
+   * @throws {Error} If the response is invalid or unsuccessful.
+   */
   async _readCsvResponse(response) {
     let payload;
     try {
@@ -1574,6 +1754,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return payload;
   }
 
+  /** Close the external flow page or return through browser history. */
   _closeImportPage() {
     window.close();
     window.setTimeout(() => {
@@ -1583,6 +1764,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }, 100);
   }
 
+  /**
+   * Render the add or edit form for a meter reading.
+   *
+   * @param {string} unit Display suffix including surrounding punctuation.
+   * @returns {string} Reading-form HTML.
+   */
   _renderEntryForm(unit) {
     const t = this._t;
     return `
@@ -1640,6 +1827,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     `;
   }
 
+  /** Export and download all entered readings for the selected meter. */
   async _exportCsv() {
     if (this._busy || !this._data) {
       return;
@@ -1659,6 +1847,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Trigger a browser download for CSV content returned by the backend.
+   *
+   * @param {{content: string, filename: string}} exported Export response.
+   */
   _downloadCsv(exported) {
     const blob = new Blob([exported.content], {
       type: "text/csv;charset=utf-8",
@@ -1673,6 +1866,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
+  /**
+   * Render escaped options for a unit selector.
+   *
+   * @param {string[]} units Allowed units.
+   * @param {string} selectedUnit Currently selected unit.
+   * @returns {string} Option HTML.
+   */
   _renderUnitOptions(units, selectedUnit) {
     return units
       .map(
@@ -1684,6 +1884,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .join("");
   }
 
+  /**
+   * Render the current page of editable meter readings.
+   *
+   * @param {object[]} readings Reading payloads.
+   * @returns {string} Responsive table HTML.
+   */
   _renderTable(readings) {
     const t = this._t;
     return `
@@ -1737,6 +1943,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     `;
   }
 
+  /**
+   * Format current page and total reading counts.
+   *
+   * @returns {string} Localized page description or an empty string.
+   */
   _formatPageDescription() {
     if (!this._data) {
       return "";
@@ -1747,6 +1958,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .replace("{count}", this._formatNumber(this._data.reading_count));
   }
 
+  /**
+   * Render meter-reading pagination controls.
+   *
+   * @returns {string} Pagination HTML or an empty string.
+   */
   _renderPagination() {
     if (!this._data || this._data.page_count <= 1) {
       return "";
@@ -1787,6 +2003,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     `;
   }
 
+  /**
+   * Build compact page-number items with null entries as ellipses.
+   *
+   * @param {number} page Current one-based page.
+   * @param {number} pageCount Total pages.
+   * @returns {(number | null)[]} Page buttons and ellipsis markers.
+   */
   _paginationItems(page, pageCount) {
     if (pageCount <= 7) {
       return Array.from({ length: pageCount }, (_, index) => index + 1);
@@ -1804,6 +2027,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return items;
   }
 
+  /**
+   * Navigate to another reading page and load it from the backend.
+   *
+   * @param {number} page Target one-based page.
+   */
   async _goToPage(page) {
     if (this._busy || page === this._page || page < 1) {
       return;
@@ -1815,6 +2043,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     await this._load();
   }
 
+  /**
+   * Validate and submit a new or edited meter reading.
+   *
+   * @param {SubmitEvent} event Reading form submission.
+   */
   async _submit(event) {
     event.preventDefault();
     const timestampInput = this.shadowRoot.querySelector("#timestamp");
@@ -1870,6 +2103,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Populate the form with a reading selected from the current page.
+   *
+   * @param {number} index Reading index on the current page.
+   */
   _editReading(index) {
     const reading = this._data.readings[index];
     this._editingTimestamp = reading.timestamp;
@@ -1886,6 +2124,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     });
   }
 
+  /** Leave edit mode and restore an empty new-reading form. */
   _cancelEdit() {
     this._editingTimestamp = undefined;
     this._formTimestamp = this._currentTimestamp();
@@ -1893,6 +2132,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._render();
   }
 
+  /**
+   * Confirm and delete a reading from the current page.
+   *
+   * @param {number} index Reading index on the current page.
+   */
   async _deleteReading(index) {
     const reading = this._data.readings[index];
     const prompt = this._t.confirmDelete
@@ -1923,6 +2167,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
   }
 
+  /**
+   * Store request state and enable or disable interactive controls.
+   *
+   * @param {boolean} busy Whether an operation is active.
+   */
   _setBusy(busy) {
     this._busy = busy;
     this.shadowRoot
@@ -1930,6 +2179,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .forEach((element) => (element.disabled = busy));
   }
 
+  /**
+   * Display a status message in the active view.
+   *
+   * @param {string} text User-facing message.
+   * @param {string} type Visual message category.
+   */
   _showMessage(text, type) {
     const element = this.shadowRoot?.querySelector(".message");
     if (!element) {
@@ -1939,15 +2194,33 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     element.className = `message ${type}`;
   }
 
+  /**
+   * Resolve a backend or JavaScript error to localized text.
+   *
+   * @param {Error & {code?: string, body?: {code?: string}}} error Error data.
+   * @returns {string} Localized message.
+   */
   _localizedError(error) {
     const code = error?.code || error?.body?.code;
     return this._t.errors[code] || error?.message || this._t.genericError;
   }
 
+  /**
+   * Return the current local form timestamp with zero seconds.
+   *
+   * @returns {string} Date-time-local input value.
+   */
   _currentTimestamp() {
     return this._formatInputTimestamp(new Date(), true);
   }
 
+  /**
+   * Format a date for a date-time-local input.
+   *
+   * @param {Date} date Date to format.
+   * @param {boolean} zeroSeconds Whether to replace seconds with zero.
+   * @returns {string} Input-compatible local timestamp.
+   */
   _formatInputTimestamp(date, zeroSeconds) {
     const options = {
       timeZone: this._timeZone,
@@ -1969,6 +2242,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${second}`;
   }
 
+  /**
+   * Format an ISO timestamp for localized display.
+   *
+   * @param {string} timestamp ISO timestamp.
+   * @returns {string} Localized date and time.
+   */
   _formatDate(timestamp) {
     return new Intl.DateTimeFormat(this._locale, {
       dateStyle: "medium",
@@ -1977,11 +2256,23 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }).format(new Date(timestamp));
   }
 
+  /**
+   * Format a reading with the selected meter's unit.
+   *
+   * @param {number} value Meter value.
+   * @returns {string} Localized display value.
+   */
   _formatReading(value) {
     const number = this._formatNumber(value);
     return this._data?.unit ? `${number} ${this._data.unit}` : number;
   }
 
+  /**
+   * Format a number for display with locale-specific grouping.
+   *
+   * @param {number} value Number to format.
+   * @returns {string} Localized display number.
+   */
   _formatNumber(value) {
     return new Intl.NumberFormat(this._locale, {
       maximumFractionDigits: 20,
@@ -1989,6 +2280,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }).format(value);
   }
 
+  /**
+   * Format a number for input without thousands separators.
+   *
+   * @param {number} value Number to format.
+   * @returns {string} Localized input number.
+   */
   _formatInputNumber(value) {
     return new Intl.NumberFormat(this._locale, {
       maximumFractionDigits: 20,
@@ -1996,6 +2293,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }).format(value);
   }
 
+  /**
+   * Detect locale-specific grouping or whitespace in numeric input.
+   *
+   * @param {string} value Raw input value.
+   * @returns {boolean} Whether a forbidden separator is present.
+   */
   _hasGroupingSeparator(value) {
     const trimmed = value.trim();
     const group = new Intl.NumberFormat(this._locale)
@@ -2004,6 +2307,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return Boolean((group && trimmed.includes(group)) || /\s/.test(trimmed));
   }
 
+  /**
+   * Parse localized, ungrouped decimal input including localized digits.
+   *
+   * @param {string} value Raw input value.
+   * @returns {number} Parsed value or NaN when invalid.
+   */
   _parseNumber(value) {
     const parts = new Intl.NumberFormat(this._locale).formatToParts(12345.6);
     const decimal = parts.find((part) => part.type === "decimal")?.value || ".";
@@ -2026,10 +2335,21 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return Number(normalized);
   }
 
+  /**
+   * Render a built-in action icon.
+   *
+   * @param {string} name Icon identifier.
+   * @returns {string} Inline SVG markup.
+   */
   _icon(name) {
     return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"></path></svg>`;
   }
 
+  /**
+   * Render the decorative icon for the selected meter type.
+   *
+   * @returns {string} Icon HTML or an empty string.
+   */
   _renderMeterTypeIcon() {
     const filename = METER_ICONS[this._data?.meter_type];
     if (!filename) {
@@ -2038,6 +2358,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     return `<img class="meter-type-icon" src="${STATIC_URL}/icons/${filename}" alt="" aria-hidden="true" />`;
   }
 
+  /**
+   * Render the entity/statistic ID used by the Energy Dashboard.
+   *
+   * @returns {string} Reference HTML or an empty string.
+   */
   _renderStatisticId() {
     const statisticId = this._data?.statistic_id;
     if (!statisticId) {
@@ -2051,6 +2376,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     `;
   }
 
+  /**
+   * Escape a value before interpolation into generated HTML.
+   *
+   * @param {*} value Value to escape.
+   * @returns {string} HTML-safe text.
+   */
   _escape(value) {
     return String(value)
       .replaceAll("&", "&amp;")
@@ -2060,10 +2391,21 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .replaceAll("'", "&#039;");
   }
 
+  /**
+   * Escape a value for an HTML attribute.
+   *
+   * @param {*} value Value to escape.
+   * @returns {string} Attribute-safe text.
+   */
   _escapeAttribute(value) {
     return this._escape(value);
   }
 
+  /**
+   * Return all management-panel component styles.
+   *
+   * @returns {string} CSS text.
+   */
   _styles() {
     return `
       :host {

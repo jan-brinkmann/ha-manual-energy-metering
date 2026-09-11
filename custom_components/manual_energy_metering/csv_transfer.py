@@ -161,6 +161,7 @@ def convert_meter_csv_unit(meter: MeterCsv, target_unit: str) -> MeterCsv:
     )
 
     def convert_optional(value: float | None) -> float | None:
+        """Convert an optional numeric CSV field while preserving null values."""
         return (
             None
             if value is None

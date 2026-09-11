@@ -122,6 +122,22 @@ In particular, Codex must not:
 
 Release management is performed manually by the repository owner.
 
+## Code documentation
+
+Keep code-level documentation synchronized with the implementation.
+
+- Add a concise English docstring to every new Python module, class, method,
+  function, and named nested helper.
+- Add a concise English JSDoc block to every new JavaScript class, method,
+  function, and named nested helper.
+- Update existing docstrings and JSDoc whenever the documented behavior
+  changes.
+- Document inputs, return values, raised errors, and relevant side effects when
+  they are not already obvious from the signature and surrounding code.
+- Apply these rules to production code and tests.
+- Prefer useful behavioral contracts over comments that merely repeat a symbol
+  name.
+
 ## End-of-task behavior
 
 After completing a development task:

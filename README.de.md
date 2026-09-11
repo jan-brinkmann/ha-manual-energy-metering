@@ -4,6 +4,15 @@
 
 # Manuelle Energiemessung
 
+<p align="center">
+  <img
+    src="custom_components/manual_energy_metering/frontend/icons/banner.png"
+    alt="Banner der Manuellen Energiemessung"
+    width="100%"
+    style="display: block; width: 100%; background-color: #ffffff;"
+  >
+</p>
+
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![Downloads](https://img.shields.io/github/downloads/jan-brinkmann/ha-manual-energy-metering/total?label=downloads)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases)
 
@@ -12,23 +21,28 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jan-brinkmann/ha-manual-energy-metering)](https://github.com/jan-brinkmann/ha-manual-energy-metering/commits/main)
 [![Validate](https://github.com/jan-brinkmann/ha-manual-energy-metering/actions/workflows/validate.yml/badge.svg)](https://github.com/jan-brinkmann/ha-manual-energy-metering/actions/workflows/validate.yml)
 
-`Manuelle Energiemessung` ist eine benutzerdefinierte Integration für Home Assistant. Sie
-richtet sich an Home-Assistant-Nutzer, die ihre Strom-, Gas- und/oder Wasserzähler
-aus unterschiedlichen Gründen nicht mit einem Lesegerät ausstatten können, das die
-Zählerstände automatisch für Home Assistant verfügbar macht. Die Integration
-verwaltet beliebig viele manuell abgelesene Strom-, Gas- und Wasserzähler und
-verteilt den Verbrauch zwischen zwei Ablesungen linear auf die betroffenen
-Stunden. Die daraus interpolierten Messwerte können anschließend in das Energy
-Dashboard von Home Assistant eingetragen werden.
-
-Mit der Integration lassen sich außerdem Lücken in bereits vorhandenen
-Aufzeichnungen schließen. Ebenso können historische Zählerstände nachgetragen
-werden, die über Jahre oder Jahrzehnte handschriftlich oder in Tabellen
-dokumentiert wurden. Aus den eingepflegten Ablesungen erzeugt die Integration
-eine durchgängig interpolierte Langzeitstatistik für die jeweils erfassten Zeiträume.
+`Manuelle Energiemessung` ist eine benutzerdefinierte Integration für Home
+Assistant. Sie richtet sich an Home-Assistant-Nutzer, die ihre Zähler aus
+unterschiedlichen Gründen nicht mit einem Lesegerät ausstatten können, das die
+Zählerstände automatisch für Home Assistant verfügbar macht.
 
 In einer englischsprachigen Home-Assistant-Oberfläche wird die Integration als
 **Manual Energy Metering** angezeigt.
+
+## Kernfunktionen
+
+- Mehrere unabhängige manuelle Zähler mit jeweils eigener Sensorentität und
+  Langzeitstatistik anlegen.
+- Datierte Zählerstände eintragen, bearbeiten und löschen, auch zwischen
+  vorhandenen historischen Zählerständen.
+- Den Verbrauch linear zu Stundenwerten für das Energy Dashboard von Home
+  Assistant interpolieren.
+- Lücken schließen oder über Jahre und Jahrzehnte handschriftlich oder in
+  Tabellen geführte Aufzeichnungen übernehmen.
+- Zählerstände über eine kompakte Dashboard-Karte eintragen, optional mit
+  Fotoerkennung durch ein externes Vision-LLM.
+- Zähler als CSV-Dateien exportieren und importieren, einschließlich kompatibler
+  Historien aus anderen Home-Assistant-Integrationen.
 
 ## Unterstützte Zähler
 
@@ -38,9 +52,7 @@ In einer englischsprachigen Home-Assistant-Oberfläche wird die Integration als
 | Gas | `kWh` | Gasheizung, Fernwärmestation |
 | Wasser | `L` | Hauptwasserzähler, Gartenwasserzähler |
 
-Jeder Zähler erhält eine eigene Sensorentität und eine eigene externe
-Langzeitstatistik. Die Messwerte bleiben im `.storage`-Verzeichnis von Home
-Assistant erhalten.
+Die Messwerte bleiben im `.storage`-Verzeichnis von Home Assistant erhalten.
 
 ## Installation
 

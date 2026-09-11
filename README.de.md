@@ -6,9 +6,10 @@
 
 <p align="center">
   <img
-    src="custom_components/manual_energy_metering/brand/icon.png"
-    alt="Logo der Manuellen Energiemessung"
-    width="180"
+    src="custom_components/manual_energy_metering/frontend/icons/banner.png"
+    alt="Banner der Manuellen Energiemessung"
+    width="100%"
+    style="display: block; width: 100%; background-color: #ffffff;"
   >
 </p>
 

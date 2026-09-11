@@ -130,6 +130,7 @@ class VisionRecognitionView(HomeAssistantView):
         await stream.prepare(request)
 
         async def send_progress(stage: str) -> None:
+            """Write a recognition progress stage to the event stream."""
             await _stream_event(
                 stream, {"event": "progress", "stage": stage}
             )

@@ -149,6 +149,7 @@ class ManualEnergyMetering:
 
         @callback
         def remove_listener() -> None:
+            """Unregister the listener created by the enclosing call."""
             self._listeners.discard(listener)
 
         return remove_listener

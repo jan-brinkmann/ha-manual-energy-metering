@@ -223,12 +223,24 @@ const TRANSLATIONS = {
   },
 };
 
+/**
+ * Select the card language from Home Assistant or the browser locale.
+ *
+ * @param {object | undefined} hass Home Assistant frontend state.
+ * @returns {"de" | "en"} Supported translation language.
+ */
 function languageFor(hass) {
   const locale =
     hass?.locale?.language || hass?.language || navigator.language || "en";
   return locale.toLowerCase().startsWith("de") ? "de" : "en";
 }
 
+/**
+ * Merge user settings with defaults and sanitize the digit-prefill option.
+ *
+ * @param {object} config Raw Lovelace card configuration.
+ * @returns {object} Normalized card configuration.
+ */
 function normalizeConfig(config) {
   const normalized = { ...DEFAULT_CONFIG, ...config };
   const rawPrefillDigits = normalized.prefill_digits;
@@ -243,12 +255,19 @@ function normalizeConfig(config) {
   return normalized;
 }
 
+/** Configure a Manual Energy Metering dashboard card. */
 class ManualEnergyMeteringCardEditor extends HTMLElement {
+  /** Create the editor's isolated shadow DOM. */
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
   }
 
+  /**
+   * Supply current Home Assistant state to the editor form.
+   *
+   * @param {object} value Home Assistant frontend state.
+   */
   set hass(value) {
     this._hass = value;
     const form = this.shadowRoot.querySelector("ha-form");
@@ -259,11 +278,17 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
     }
   }
 
+  /**
+   * Apply a Lovelace card configuration to the editor.
+   *
+   * @param {object} config Card configuration to edit.
+   */
   setConfig(config) {
     this._config = normalizeConfig(config);
     this._render();
   }
 
+  /** Render the Home Assistant schema form and connect its change event. */
   _render() {
     if (!this._config) {
       return;
@@ -330,15 +355,27 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
   }
 }
 
+/** Enter meter readings and optionally recognize them from photographs. */
 class ManualEnergyMeteringCard extends HTMLElement {
+  /**
+   * Create the configuration editor requested by Lovelace.
+   *
+   * @returns {HTMLElement} Card editor element.
+   */
   static getConfigElement() {
     return document.createElement(EDITOR_TAG);
   }
 
+  /**
+   * Return defaults for a newly inserted dashboard card.
+   *
+   * @returns {object} Initial Lovelace configuration.
+   */
   static getStubConfig() {
     return { ...DEFAULT_CONFIG };
   }
 
+  /** Initialize shadow DOM and transient form, camera, and request state. */
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -362,6 +399,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._cameraRequestId = 0;
   }
 
+  /**
+   * Apply configuration and reset entity-specific state when necessary.
+   *
+   * @param {object} config Lovelace card configuration.
+   * @throws {Error} If no configuration was supplied.
+   */
   setConfig(config) {
     if (!config) {
       throw new Error("Invalid card configuration");
@@ -386,6 +429,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._resolveHistoryLink();
   }
 
+  /**
+   * Receive Home Assistant state and refresh data affected by state or locale.
+   *
+   * @param {object} value Home Assistant frontend state.
+   */
   set hass(value) {
     const entityId = this._config?.entity;
     const previousState = entityId ? this._hass?.states?.[entityId] : undefined;
@@ -413,16 +461,23 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /** Initialize defaults and render when the card enters the document. */
   connectedCallback() {
     this._ensureTimestamp();
     this._ensurePrefilledValue();
     this._render();
   }
 
+  /** Stop active camera tracks when the card leaves the document. */
   disconnectedCallback() {
     this._closeCamera(false);
   }
 
+  /**
+   * Estimate vertical space for Lovelace layout calculations.
+   *
+   * @returns {number} Suggested card height in Lovelace rows.
+   */
   getCardSize() {
     if (!this._config?.show_photo_buttons) {
       return 7;
@@ -433,6 +488,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return this._recognitionStage ? 10 : 9;
   }
 
+  /**
+   * Describe supported section-view grid dimensions.
+   *
+   * @returns {{columns: number, min_columns: number}} Grid constraints.
+   */
   getGridOptions() {
     return {
       columns: 12,
@@ -440,14 +500,17 @@ class ManualEnergyMeteringCard extends HTMLElement {
     };
   }
 
+  /** @returns {"de" | "en"} Active supported translation language. */
   get _language() {
     return languageFor(this._hass);
   }
 
+  /** @returns {object} Translation dictionary for the active language. */
   get _t() {
     return TRANSLATIONS[this._language];
   }
 
+  /** @returns {string} Locale used for localized values and dates. */
   get _locale() {
     return (
       this._hass?.locale?.language ||
@@ -457,22 +520,30 @@ class ManualEnergyMeteringCard extends HTMLElement {
     );
   }
 
+  /** @returns {string | undefined} Home Assistant's configured time zone. */
   get _timeZone() {
     return this._hass?.config?.time_zone || undefined;
   }
 
+  /** Fill an untouched empty timestamp field with the current local time. */
   _ensureTimestamp() {
     if (!this._formTimestamp && !this._timestampDirty && this._hass) {
       this._formTimestamp = this._formatInputTimestamp(new Date());
     }
   }
 
+  /** Refresh the value prefix while the user has not edited the field. */
   _ensurePrefilledValue() {
     if (!this._valueDirty) {
       this._formValue = this._prefilledReading();
     }
   }
 
+  /**
+   * Derive the configured leading digits from the last meter reading.
+   *
+   * @returns {string} Localized, ungrouped input prefix or an empty string.
+   */
   _prefilledReading() {
     const digitLimit = this._config?.prefill_digits || 0;
     const lastReading = this._stateData().lastReading;
@@ -510,6 +581,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return digitCount ? result : "";
   }
 
+  /** Reset input and recognition state after a successful submission. */
   _resetForm() {
     this._valueDirty = false;
     this._formValue = this._prefilledReading();
@@ -522,6 +594,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._recognitionFailed = false;
   }
 
+  /**
+   * Combine entity attributes with the latest WebSocket result.
+   *
+   * @returns {object} Data required to render the card.
+   */
   _stateData() {
     const entityId = this._config?.entity;
     const state = entityId ? this._hass?.states?.[entityId] : undefined;
@@ -549,6 +626,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     };
   }
 
+  /** Render the complete card and reconnect DOM event handlers. */
   _render() {
     if (!this._config) {
       return;
@@ -691,6 +769,14 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._attachCameraStream();
   }
 
+  /**
+   * Render camera and upload controls in their current enabled state.
+   *
+   * @param {boolean} hasEntity Whether an entity is configured.
+   * @param {boolean} available Whether the entity is available.
+   * @param {boolean} visionConfigured Whether photo recognition is configured.
+   * @returns {string} Photo-control HTML.
+   */
   _renderPhotoControls(hasEntity, available, visionConfigured) {
     const disabled =
       !hasEntity ||
@@ -732,6 +818,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     `;
   }
 
+  /**
+   * Render the live-camera overlay while starting or capturing.
+   *
+   * @returns {string} Camera overlay HTML or an empty string.
+   */
   _renderCameraCapture() {
     if (!this._cameraStarting && !this._cameraOpen) {
       return "";
@@ -778,6 +869,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     `;
   }
 
+  /** Open native file capture or the direct Android camera workflow. */
   _takePhoto() {
     if (this._busy || this._cameraStarting || this._cameraOpen) {
       return;
@@ -789,6 +881,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._openCamera();
   }
 
+  /**
+   * Detect the Android Companion App and its JavaScript bridge.
+   *
+   * @returns {boolean} Whether direct in-app camera handling should be used.
+   */
   _isAndroidCompanionApp() {
     const hasNativeBridge =
       typeof window.externalApp !== "undefined" ||
@@ -796,6 +893,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return /Android/i.test(navigator.userAgent || "") && hasNativeBridge;
   }
 
+  /** Request the rear camera and display a live capture overlay. */
   async _openCamera() {
     const entityId = this._config?.entity;
     const requestId = ++this._cameraRequestId;
@@ -841,6 +939,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this.shadowRoot.querySelector(".camera-overlay")?.focus();
   }
 
+  /**
+   * Request a rear-facing video stream with a compatible fallback.
+   *
+   * @returns {Promise<MediaStream>} Open camera stream.
+   */
   async _requestRearCameraStream() {
     const video = {
       facingMode: { exact: "environment" },
@@ -866,6 +969,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /**
+   * Open a media stream through the modern or legacy browser API.
+   *
+   * @param {MediaStreamConstraints} constraints Requested media constraints.
+   * @returns {Promise<MediaStream>} Requested media stream.
+   */
   _getUserMedia(constraints) {
     if (navigator.mediaDevices?.getUserMedia) {
       return navigator.mediaDevices.getUserMedia(constraints);
@@ -889,6 +998,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return Promise.reject(error);
   }
 
+  /** Attach the active stream to the video element and monitor its state. */
   _attachCameraStream() {
     const stream = this._cameraStream;
     const video = this.shadowRoot.querySelector("#camera-preview");
@@ -896,9 +1006,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
       return;
     }
     video.srcObject = stream;
+    /** Return whether callbacks still target the active stream and element. */
     const isCurrentVideo = () =>
       this._cameraStream === stream &&
       this.shadowRoot.querySelector("#camera-preview") === video;
+    /** Enable capture after usable video dimensions become available. */
     const markReady = () => {
       if (!isCurrentVideo() || !video.videoWidth || !video.videoHeight) {
         return;
@@ -944,6 +1056,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /** Capture the current video frame and submit it for recognition. */
   async _captureCameraPhoto() {
     if (!this._cameraOpen || !this._cameraReady || this._busy) {
       return;
@@ -1004,6 +1117,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /**
+   * Stop all camera tracks, remove the preview, and optionally rerender.
+   *
+   * @param {boolean} render Whether to rerender after cleanup.
+   */
   _closeCamera(render = true) {
     this._cameraRequestId += 1;
     const overlay = this.shadowRoot.querySelector(".camera-overlay");
@@ -1034,6 +1152,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /**
+   * Map browser camera failures to a localized user-facing message.
+   *
+   * @param {Error & {code?: string}} error Browser or integration error.
+   * @returns {string} Localized error text.
+   */
   _cameraErrorMessage(error) {
     if (error?.code === "camera_insecure_context") {
       return this._t.cameraSecureContextRequired;
@@ -1055,6 +1179,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return this._t.cameraUnavailable;
   }
 
+  /**
+   * Render current photo-recognition milestones.
+   *
+   * @returns {string} Accessible progress HTML or an empty string.
+   */
   _renderRecognitionProgress() {
     const currentIndex = RECOGNITION_STAGES.indexOf(this._recognitionStage);
     if (currentIndex < 0) {
@@ -1110,6 +1239,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     `;
   }
 
+  /**
+   * Render the processed photograph and confirmation hint.
+   *
+   * @returns {string} Preview HTML or an empty string.
+   */
   _renderPhotoPreview() {
     if (!this._photoPreview) {
       return "";
@@ -1124,6 +1258,14 @@ class ManualEnergyMeteringCard extends HTMLElement {
     `;
   }
 
+  /**
+   * Render configured last-reading summary fields.
+   *
+   * @param {object} data Current meter display data.
+   * @param {boolean} showLastReading Whether to show the last value.
+   * @param {boolean} showLastReadingTimestamp Whether to show its timestamp.
+   * @returns {string} Summary HTML or an empty string.
+   */
   _renderSummary(data, showLastReading, showLastReadingTimestamp) {
     if (!showLastReading && !showLastReadingTimestamp) {
       return "";
@@ -1156,6 +1298,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     `;
   }
 
+  /**
+   * Render the decorative icon for a supported meter type.
+   *
+   * @param {string | undefined} meterType Meter type identifier.
+   * @returns {string} Icon HTML or an empty string.
+   */
   _renderMeterTypeIcon(meterType) {
     const filename = METER_ICONS[meterType];
     if (!filename) {
@@ -1164,12 +1312,14 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return `<img class="meter-type-icon" src="${STATIC_URL}/icons/${filename}" alt="" aria-hidden="true" />`;
   }
 
+  /** Clear resolved entity-registry data for the history link. */
   _resetHistoryLink() {
     this._historyEntity = undefined;
     this._historyUrl = undefined;
     this._historyLoading = false;
   }
 
+  /** Resolve the configured entity to its meter management URL for admins. */
   _resolveHistoryLink() {
     const entityId = this._config?.entity;
     if (
@@ -1212,6 +1362,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
       });
   }
 
+  /**
+   * Render the optional administrator link to complete meter history.
+   *
+   * @returns {string} History-link HTML or an empty string.
+   */
   _renderHistoryLink() {
     if (
       !this._config.show_history_link ||
@@ -1230,6 +1385,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     `;
   }
 
+  /**
+   * Store and display a recognized progress stage.
+   *
+   * @param {string} stage Stage identifier sent by the backend.
+   */
   _setRecognitionStage(stage) {
     if (!RECOGNITION_STAGES.includes(stage)) {
       return;
@@ -1239,6 +1399,13 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._render();
   }
 
+  /**
+   * Decode a recognition JSON response or streamed progress events.
+   *
+   * @param {Response} response Authenticated recognition response.
+   * @returns {Promise<object>} Final recognition result.
+   * @throws {Error} If the response or event stream is invalid.
+   */
   async _readRecognitionResponse(response) {
     const contentType = response.headers.get("Content-Type") || "";
     if (!response.ok || !contentType.includes("text/event-stream")) {
@@ -1265,6 +1432,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     let dataLines = [];
     let result;
 
+    /** Process one complete server-sent event accumulated in dataLines. */
     const handleEvent = () => {
       if (!dataLines.length) {
         return;
@@ -1287,6 +1455,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
         result = payload;
       }
     };
+    /**
+     * Buffer an SSE data line or dispatch at an empty separator.
+     *
+     * @param {string} line Raw event-stream line.
+     */
     const processLine = (line) => {
       const normalized = line.endsWith("\r") ? line.slice(0, -1) : line;
       if (normalized === "") {
@@ -1324,6 +1497,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return result;
   }
 
+  /**
+   * Read the selected file from an upload input and start recognition.
+   *
+   * @param {Event} event File-input change event.
+   */
   async _recognizePhoto(event) {
     const input = event.target;
     const file = input.files?.[0];
@@ -1332,6 +1510,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     await this._recognizeFile(file, readPhotoTimestamp);
   }
 
+  /**
+   * Prepare a photograph, call the vision endpoint, and fill the form.
+   *
+   * @param {File | Blob | undefined} file Source photograph.
+   * @param {boolean} readPhotoTimestamp Whether to inspect EXIF capture time.
+   */
   async _recognizeFile(file, readPhotoTimestamp = false) {
     if (!file || this._busy || !this._config.entity) {
       return;
@@ -1416,6 +1600,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /**
+   * Extract and format a capture timestamp from supported EXIF metadata.
+   *
+   * @param {File | Blob} file Original uploaded photograph.
+   * @returns {Promise<string | undefined>} Local input timestamp if present.
+   */
   async _readPhotoTimestamp(file) {
     if (!file.size || file.size > MAX_SOURCE_IMAGE_BYTES) {
       return undefined;
@@ -1436,11 +1626,31 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /**
+   * Locate a TIFF/EXIF block inside JPEG, PNG, or WebP bytes.
+   *
+   * @param {DataView} view Source image bytes.
+   * @returns {{offset: number, length: number} | undefined} TIFF byte range.
+  */
   _findExifTiff(view) {
+    /**
+     * Check whether expected byte values occur within the image buffer.
+     *
+     * @param {number} offset First byte offset.
+     * @param {number[]} values Expected bytes.
+     * @returns {boolean} Whether all bytes match.
+     */
     const hasBytes = (offset, values) =>
       offset >= 0 &&
       offset + values.length <= view.byteLength &&
       values.every((value, index) => view.getUint8(offset + index) === value);
+    /**
+     * Normalize an EXIF segment to a valid TIFF byte range.
+     *
+     * @param {number} offset Segment data offset.
+     * @param {number} length Segment data length.
+     * @returns {{offset: number, length: number} | undefined} TIFF range.
+     */
     const tiffRange = (offset, length) => {
       const exifHeader = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00];
       if (length >= exifHeader.length && hasBytes(offset, exifHeader)) {
@@ -1539,8 +1749,22 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return undefined;
   }
 
+  /**
+   * Read prioritized capture date and offset tags from a TIFF block.
+   *
+   * @param {DataView} view Source image bytes.
+   * @param {{offset: number, length: number}} tiff TIFF byte range.
+   * @returns {{dateTime: string, offset?: string} | undefined} EXIF values.
+  */
   _readExifDateTime(view, tiff) {
     const end = tiff.offset + tiff.length;
+    /**
+     * Check that a byte range lies inside both TIFF and source buffers.
+     *
+     * @param {number} offset First byte offset.
+     * @param {number} length Number of bytes.
+     * @returns {boolean} Whether the range is safe to read.
+     */
     const canRead = (offset, length) =>
       offset >= tiff.offset &&
       length >= 0 &&
@@ -1555,10 +1779,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
       return undefined;
     }
     const littleEndian = byteOrder === 0x4949;
+    /** Read an endian-aware unsigned 16-bit value when in bounds. */
     const readUint16 = (offset) =>
       canRead(offset, 2)
         ? view.getUint16(offset, littleEndian)
         : undefined;
+    /** Read an endian-aware unsigned 32-bit value when in bounds. */
     const readUint32 = (offset) =>
       canRead(offset, 4)
         ? view.getUint32(offset, littleEndian)
@@ -1567,6 +1793,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
       return undefined;
     }
 
+    /**
+     * Parse one image file directory into EXIF entries keyed by tag.
+     *
+     * @param {number} relativeOffset Directory offset relative to TIFF.
+     * @returns {Map<number, object>} Parsed entries.
+     */
     const readIfd = (relativeOffset) => {
       const entries = new Map();
       if (!Number.isInteger(relativeOffset)) {
@@ -1590,6 +1822,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
       }
       return entries;
     };
+    /**
+     * Read a bounded ASCII value from an EXIF entry.
+     *
+     * @param {object | undefined} entry EXIF entry descriptor.
+     * @returns {string | undefined} Trimmed value.
+     */
     const readAscii = (entry) => {
       if (
         !entry ||
@@ -1620,6 +1858,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
       }
       return value.trim() || undefined;
     };
+    /** Read a single unsigned LONG value from a compatible EXIF entry. */
     const readLong = (entry) =>
       entry?.type === 4 && entry.count === 1
         ? readUint32(entry.offset + 8)
@@ -1633,6 +1872,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     const exifIfdOffset = readLong(ifd.get(EXIF_TAGS.exifIfd));
     const exifIfd =
       exifIfdOffset === undefined ? new Map() : readIfd(exifIfdOffset);
+    /** Resolve an ASCII tag from the EXIF directory, then the primary one. */
     const fromIfds = (tag) =>
       readAscii(exifIfd.get(tag)) || readAscii(ifd.get(tag));
     const generalOffset = fromIfds(EXIF_TAGS.offsetTime);
@@ -1659,6 +1899,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
       : undefined;
   }
 
+  /**
+   * Validate EXIF date metadata and convert it to a local form timestamp.
+   *
+   * @param {{dateTime: string, offset?: string}} metadata EXIF date fields.
+   * @returns {string | undefined} Date-time-local value with zero seconds.
+   */
   _formatExifDateTime(metadata) {
     const match = /^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/.exec(
       metadata.dateTime.trim()
@@ -1691,6 +1937,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
       return undefined;
     }
 
+    /** Format a numeric date component with two digits. */
     const pad = (value) => String(value).padStart(2, "0");
     const localTimestamp =
       String(year).padStart(4, "0") +
@@ -1716,6 +1963,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return localTimestamp;
   }
 
+  /**
+   * Format an absolute capture instant in Home Assistant's time zone.
+   *
+   * @param {Date} date Absolute photograph capture instant.
+   * @returns {string} Date-time-local value with zero seconds.
+   */
   _formatPhotoInstant(date) {
     const parts = Object.fromEntries(
       new Intl.DateTimeFormat("en-CA", {
@@ -1746,6 +1999,15 @@ class ManualEnergyMeteringCard extends HTMLElement {
     );
   }
 
+  /**
+   * Validate and optionally compress an image for upload and preview.
+   *
+   * @param {File | Blob} file Original photograph.
+   * @param {boolean} compressImage Whether to resize and encode as JPEG.
+   * @returns {Promise<{file: Blob, dataUrl: string, mimeType: string}>}
+   *   Provider upload body and browser preview data.
+   * @throws {Error} If the image is unsupported, too large, or undecodable.
+   */
   async _prepareImage(file, compressImage) {
     const sourceMimeType = file.type.toLowerCase();
     if (!sourceMimeType.startsWith("image/") || !file.size) {
@@ -1827,6 +2089,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     };
   }
 
+  /**
+   * Validate and submit the current reading through the card WebSocket API.
+   *
+   * @param {SubmitEvent} event Reading form submission.
+   */
   async _submit(event) {
     event.preventDefault();
     if (this._busy || !this._config.entity) {
@@ -1873,6 +2140,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /** Replace the form timestamp with the current time and zero seconds. */
   _setCurrentTimestamp() {
     if (this._busy) {
       return;
@@ -1883,6 +2151,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._render();
   }
 
+  /**
+   * Store request state and enable or disable interactive controls.
+   *
+   * @param {boolean} busy Whether an operation is active.
+   */
   _setBusy(busy) {
     this._busy = busy;
     this.shadowRoot
@@ -1890,6 +2163,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
       .forEach((element) => (element.disabled = busy));
   }
 
+  /**
+   * Store and immediately display a card status message.
+   *
+   * @param {string} text User-facing message.
+   * @param {string} type Visual message category.
+   */
   _setMessage(text, type) {
     this._message = { text, type };
     const element = this.shadowRoot.querySelector(".message");
@@ -1899,11 +2178,23 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
+  /**
+   * Resolve a backend or JavaScript error to localized text.
+   *
+   * @param {Error & {code?: string, body?: {code?: string}}} error Error data.
+   * @returns {string} Localized message.
+   */
   _localizedError(error) {
     const code = error?.code || error?.body?.code;
     return this._t.errors[code] || error?.message || this._t.genericError;
   }
 
+  /**
+   * Format a date for a date-time-local input in the configured time zone.
+   *
+   * @param {Date} date Date to format.
+   * @returns {string} Input-compatible timestamp with zero seconds.
+   */
   _formatInputTimestamp(date) {
     const parts = Object.fromEntries(
       new Intl.DateTimeFormat("en-CA", {
@@ -1923,6 +2214,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:00`;
   }
 
+  /**
+   * Format an ISO timestamp for localized display.
+   *
+   * @param {string} timestamp ISO timestamp.
+   * @returns {string} Localized date and time.
+   */
   _formatDate(timestamp) {
     return new Intl.DateTimeFormat(this._locale, {
       dateStyle: "medium",
@@ -1931,6 +2228,13 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }).format(new Date(timestamp));
   }
 
+  /**
+   * Format a reading with grouping and an optional unit.
+   *
+   * @param {number} value Meter value.
+   * @param {string} unit Unit label.
+   * @returns {string} Localized display value.
+   */
   _formatReading(value, unit) {
     const number = new Intl.NumberFormat(this._locale, {
       maximumFractionDigits: 20,
@@ -1939,6 +2243,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return unit ? `${number} ${unit}` : number;
   }
 
+  /**
+   * Format a reading for input without thousands separators.
+   *
+   * @param {number} value Meter value.
+   * @returns {string} Localized input value.
+   */
   _formatInputReading(value) {
     return new Intl.NumberFormat(this._locale, {
       maximumFractionDigits: 20,
@@ -1946,6 +2256,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }).format(value);
   }
 
+  /**
+   * Detect locale-specific grouping or whitespace in numeric input.
+   *
+   * @param {string} value Raw input value.
+   * @returns {boolean} Whether a forbidden separator is present.
+   */
   _hasGroupingSeparator(value) {
     const trimmed = value.trim();
     const group = new Intl.NumberFormat(this._locale)
@@ -1954,6 +2270,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return Boolean((group && trimmed.includes(group)) || /\s/.test(trimmed));
   }
 
+  /**
+   * Parse localized, ungrouped decimal input including localized digits.
+   *
+   * @param {string} value Raw input value.
+   * @returns {number} Parsed value or NaN when invalid.
+   */
   _parseNumber(value) {
     const parts = new Intl.NumberFormat(this._locale).formatToParts(12345.6);
     const decimal = parts.find((part) => part.type === "decimal")?.value || ".";
@@ -1975,6 +2297,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     return Number(normalized);
   }
 
+  /**
+   * Escape a value before interpolation into generated HTML.
+   *
+   * @param {*} value Value to escape.
+   * @returns {string} HTML-safe text.
+   */
   _escape(value) {
     return String(value)
       .replaceAll("&", "&amp;")
@@ -1984,10 +2312,21 @@ class ManualEnergyMeteringCard extends HTMLElement {
       .replaceAll("'", "&#039;");
   }
 
+  /**
+   * Escape a value for an HTML attribute.
+   *
+   * @param {*} value Value to escape.
+   * @returns {string} Attribute-safe text.
+   */
   _escapeAttribute(value) {
     return this._escape(value);
   }
 
+  /**
+   * Return all dashboard-card component styles.
+   *
+   * @returns {string} CSS text.
+   */
   _styles() {
     return `
       :host { display: block; }

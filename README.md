@@ -14,20 +14,26 @@
 
 `Manual Energy Metering` is a custom integration for Home Assistant. It is
 intended for Home Assistant users who, for various reasons, cannot equip their
-electricity, gas, and/or water meters with a reading device that automatically
-makes meter readings available to Home Assistant. The integration manages any
-number of manually read electricity, gas, and water meters and distributes the
-consumption between two readings linearly across the affected hours. The
-resulting interpolated readings can then be added to Home Assistant's Energy
-Dashboard.
-
-The integration can also close gaps in existing records. Historical meter
-readings that have been documented by hand or in spreadsheets for years or even
-decades can be entered as well. From these readings, the integration creates a
-continuously interpolated long-term statistic for each recorded period.
+meters with a reading device that automatically makes meter readings available
+to Home Assistant.
 
 In a German-language Home Assistant interface, the integration is displayed as
 **Manuelle Energiemessung**.
+
+## Core features
+
+- Create multiple independent manual meters, each with its own sensor entity and
+  long-term statistic.
+- Add, edit, and delete dated readings, including readings between existing
+  historical values.
+- Linearly interpolate consumption into hourly values for the Home Assistant
+  Energy Dashboard.
+- Close gaps or enter records maintained by hand or in spreadsheets over years
+  or decades.
+- Enter readings from a compact dashboard card, optionally with external
+  Vision-LLM photo recognition.
+- Export and import meters as CSV files, including compatible histories from
+  other Home Assistant integrations.
 
 ## Supported meters
 
@@ -37,8 +43,7 @@ In a German-language Home Assistant interface, the integration is displayed as
 | Gas | `kWh` | Gas heating, district heating station |
 | Water | `L` | Main water meter, garden water meter |
 
-Each meter receives its own sensor entity and external long-term statistic. The
-readings are retained in the `.storage` directory used by Home Assistant.
+The readings are retained in the `.storage` directory used by Home Assistant.
 
 ## Installation
 

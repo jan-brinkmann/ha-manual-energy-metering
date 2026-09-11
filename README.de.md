@@ -4,6 +4,14 @@
 
 # Manuelle Energiemessung
 
+<p align="center">
+  <img
+    src="custom_components/manual_energy_metering/brand/icon.png"
+    alt="Logo der Manuellen Energiemessung"
+    width="180"
+  >
+</p>
+
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![Downloads](https://img.shields.io/github/downloads/jan-brinkmann/ha-manual-energy-metering/total?label=downloads)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases)
 

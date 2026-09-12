@@ -314,13 +314,24 @@ class ManualEnergyMeteringPanel extends HTMLElement {
 
   /**
    * Receive Home Assistant state and refresh data affected by route or locale.
+   * External flow controls retain their DOM across unrelated state updates.
    *
    * @param {object} value Home Assistant frontend state.
    */
   set hass(value) {
     if (this._importFlowId || this._exportFlowId) {
+      const hadHass = this._hass !== undefined;
+      const oldLocale = this._locale;
+      const oldTimeZone = this._timeZone;
       this._hass = value;
-      this._render();
+      if (
+        !hadHass ||
+        !this.shadowRoot.firstElementChild ||
+        oldLocale !== this._locale ||
+        oldTimeZone !== this._timeZone
+      ) {
+        this._render();
+      }
       if (
         this._exportFlowId &&
         this.isConnected &&

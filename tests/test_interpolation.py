@@ -1155,6 +1155,14 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("_statisticsMeterTypeFilter", frontend)
         self.assertIn("_statisticsSourceFilter", frontend)
         self.assertIn("_changeStatisticsSourceFilter", frontend)
+        self.assertIn(
+            "const hadHass = this._hass !== undefined;", frontend
+        )
+        self.assertIn(
+            "oldLocale !== this._locale ||\n"
+            "        oldTimeZone !== this._timeZone",
+            frontend,
+        )
         self.assertIn('item.export_mode === "readings"', frontend)
         self.assertIn('item.export_mode === "statistics"', frontend)
         self.assertIn("item.filter_meter_types?.includes", frontend)

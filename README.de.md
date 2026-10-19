@@ -13,7 +13,7 @@
   >
 </p>
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![HACS](https://img.shields.io/badge/HACS-Default-blue.svg)](https://hacs.xyz)
 [![Downloads](https://img.shields.io/github/downloads/jan-brinkmann/ha-manual-energy-metering/total?label=downloads)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases)
 
 [![Release](https://img.shields.io/github/v/release/jan-brinkmann/ha-manual-energy-metering?label=release)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases/latest)
@@ -58,20 +58,17 @@ Die Messwerte bleiben im `.storage`-Verzeichnis von Home Assistant erhalten.
 
 ### Bevorzugt: Installation über HACS
 
-Voraussetzung ist eine bereits eingerichtete HACS-Installation.
+Voraussetzung ist eine bereits eingerichtete HACS-Installation. **Manual Energy
+Metering** ist im regulären HACS-Katalog enthalten.
 
 1. Öffne **HACS** in Home Assistant.
-2. Öffne oben rechts das Drei-Punkte-Menü und wähle
-   **Benutzerdefinierte Repositories**.
-3. Trage als Repository
-   `https://github.com/jan-brinkmann/ha-manual-energy-metering` ein.
-4. Wähle als Typ **Integration** und füge das Repository hinzu.
-5. Öffne in HACS **Manual Energy Metering**, wähle **Herunterladen** und
+2. Suche nach **Manual Energy Metering**.
+3. Öffne den Suchtreffer, wähle **Herunterladen** und
    installiere die neueste veröffentlichte Version.
-6. Starte Home Assistant vollständig neu.
-7. Öffne **Einstellungen > Geräte & Dienste > Integration hinzufügen** und wähle
+4. Starte Home Assistant vollständig neu.
+5. Öffne **Einstellungen > Geräte & Dienste > Integration hinzufügen** und wähle
    **Manuelle Energiemessung**.
-8. Lege für jeden physischen Zähler einen eigenen Integrationseintrag an.
+6. Lege für jeden physischen Zähler einen eigenen Integrationseintrag an.
 
 ### Alternative: Manuelle Installation über GitHub
 

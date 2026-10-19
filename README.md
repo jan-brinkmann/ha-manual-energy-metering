@@ -13,7 +13,7 @@
   >
 </p>
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![HACS](https://img.shields.io/badge/HACS-Default-blue.svg)](https://hacs.xyz)
 [![Downloads](https://img.shields.io/github/downloads/jan-brinkmann/ha-manual-energy-metering/total?label=downloads)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases)
 
 [![Release](https://img.shields.io/github/v/release/jan-brinkmann/ha-manual-energy-metering?label=release)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases/latest)
@@ -58,21 +58,17 @@ The readings are retained in the `.storage` directory used by Home Assistant.
 
 ### Preferred: Installation through HACS
 
-An existing HACS installation is required.
+An existing HACS installation is required. **Manual Energy Metering** is
+included in the default HACS catalog.
 
 1. Open **HACS** in Home Assistant.
-2. Open the three-dot menu in the upper-right corner and select
-   **Custom repositories**.
-3. Enter
-   `https://github.com/jan-brinkmann/ha-manual-energy-metering` as the
-   repository.
-4. Select **Integration** as the type and add the repository.
-5. Open **Manual Energy Metering** in HACS, select **Download**, and install the
+2. Search for **Manual Energy Metering**.
+3. Open the search result, select **Download**, and install the
    latest published version.
-6. Fully restart Home Assistant.
-7. Open **Settings > Devices & services > Add integration** and select
+4. Fully restart Home Assistant.
+5. Open **Settings > Devices & services > Add integration** and select
    **Manual Energy Metering**.
-8. Create a separate integration entry for each physical meter.
+6. Create a separate integration entry for each physical meter.
 
 ### Alternative: Manual installation from GitHub
 

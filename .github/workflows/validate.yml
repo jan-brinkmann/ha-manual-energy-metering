@@ -16,10 +16,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: HACS validation
+      # The Marketplace catalog uses this action and the root hacs.json manifest.
+      # https://contributors.home-assistant.io/marketplace/reference/validation/
+      - name: Validate for the Marketplace catalog
         uses: hacs/action@main
         with:
           category: integration
+          comment: "false"
 
   hassfest:
     name: Hassfest

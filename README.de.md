@@ -13,7 +13,6 @@
   >
 </p>
 
-[![HACS](https://img.shields.io/badge/HACS-Default-blue.svg)](https://hacs.xyz)
 [![Downloads](https://img.shields.io/github/downloads/jan-brinkmann/ha-manual-energy-metering/total?label=downloads)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases)
 
 [![Release](https://img.shields.io/github/v/release/jan-brinkmann/ha-manual-energy-metering?label=release)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases/latest)
@@ -54,21 +53,25 @@ In einer englischsprachigen Home-Assistant-Oberfläche wird die Integration als
 
 Die Messwerte bleiben im `.storage`-Verzeichnis von Home Assistant erhalten.
 
+<!-- ha-marketplace:exclude-start -->
+
 ## Installation
 
-### Bevorzugt: Installation über HACS
+### Marketplace
 
-Voraussetzung ist eine bereits eingerichtete HACS-Installation. **Manual Energy
-Metering** ist im regulären HACS-Katalog enthalten.
+Der Marketplace ist direkt in Home Assistant integriert. Du kannst **Manual
+Energy Metering** ohne GitHub-Konto aus dem Standardkatalog installieren.
 
-1. Öffne **HACS** in Home Assistant.
-2. Suche nach **Manual Energy Metering**.
-3. Öffne den Suchtreffer, wähle **Herunterladen** und
-   installiere die neueste veröffentlichte Version.
-4. Starte Home Assistant vollständig neu.
-5. Öffne **Einstellungen > Geräte & Dienste > Integration hinzufügen** und wähle
-   **Manuelle Energiemessung**.
-6. Lege für jeden physischen Zähler einen eigenen Integrationseintrag an.
+[![Manual Energy Metering im Marketplace öffnen](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=jan-brinkmann&repository=ha-manual-energy-metering&category=integration)
+
+1. Öffne als Administrator **Einstellungen > Marketplace** und lies und bestätige
+   den Hinweis zu Community-Inhalten, wenn er angezeigt wird.
+2. Suche nach **Manual Energy Metering**, öffne den Treffer und wähle
+   **Installieren**. Bestätige die Version im Installationsdialog.
+3. Falls Home Assistant unter **Einstellungen > System > Reparaturen** einen
+   Neustart anfordert, starte vor dem Einrichten der Zähler neu.
+
+[Marketplace-Dokumentation](https://www.home-assistant.io/integrations/marketplace/)
 
 ### Alternative: Manuelle Installation über GitHub
 
@@ -85,9 +88,15 @@ Metering** ist im regulären HACS-Katalog enthalten.
    liegt. Eine zusätzliche Verzeichnisebene aus dem Namen des ZIP-Archivs ist an
    dieser Stelle falsch.
 5. Starte Home Assistant vollständig neu.
-6. Öffne **Einstellungen > Geräte & Dienste > Integration hinzufügen** und wähle
-   **Manuelle Energiemessung**.
-7. Lege für jeden physischen Zähler einen eigenen Integrationseintrag an.
+
+<!-- ha-marketplace:exclude-end -->
+
+## Zähler einrichten
+
+Schließe nach der Installation die Einrichtung ab, falls sie automatisch
+angezeigt wird. Du kannst sie auch unter **Einstellungen > Geräte & Dienste >
+Integration hinzufügen > Manuelle Energiemessung** öffnen. Lege für jeden
+physischen Zähler einen eigenen Integrationseintrag an.
 
 Anschließend erscheint **Manuelle Energiemessung** im Reiter **Integrationen** als
 eigene Kachel. Nach einem Klick auf die Kachel erscheint für jeden angelegten
@@ -95,12 +104,14 @@ Zähler ein separater Konfigurationseintrag.
 
 ## Aktualisierung
 
-### Aktualisierung über HACS
+### Aktualisierung über den Marketplace (Home Assistant ab 2026.11)
 
-1. Öffne **HACS** und dort **Manual Energy Metering**.
-2. Lade die von HACS angebotene neue Release-Version herunter.
-3. Starte Home Assistant vollständig neu, sobald HACS den ausstehenden Neustart
-   anzeigt.
+1. Öffne **Einstellungen > Marketplace** und bestätige gegebenenfalls den Hinweis
+   zu Community-Inhalten.
+2. Öffne **Einstellungen > Updates**, wähle **Manual Energy Metering** und
+   installiere die angebotene Release-Version.
+3. Starte Home Assistant vollständig neu, um das Update anzuwenden. Die Erinnerung
+   an den Neustart erscheint unter **Einstellungen > System > Reparaturen**.
 
 ### Manuelle Aktualisierung
 
@@ -213,8 +224,9 @@ Korrigiere die Werte bei Bedarf und wähle **Zählerstand eintragen**, um den
 Datensatz zu speichern. Ohne konfigurierten Provider bleiben alle manuellen
 Funktionen verfügbar.
 
-Starte Home Assistant nach Installation oder Aktualisierung vollständig neu und
-lade den Browser neu, falls die Karte nicht in der Kartenauswahl erscheint.
+Die Integration enthält die Karte und registriert sie automatisch. Lade den
+Browser neu, falls die Karte nach der Einrichtung in der Kartenauswahl fehlt.
+Starte nach einem Integrationsupdate zuerst Home Assistant vollständig neu.
 
 ## Zeitangaben und Entitätsverlauf
 

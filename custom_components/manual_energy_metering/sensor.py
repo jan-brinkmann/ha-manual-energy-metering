@@ -18,6 +18,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ATTR_LAST_READING,
     ATTR_LAST_READING_TIMESTAMP,
+    ATTR_METER_UNIT,
     ATTR_RECENT_READINGS,
     ATTR_TIMESTAMP,
     ATTR_VALUE,
@@ -33,7 +34,6 @@ from .const import (
     MAX_RECENT_READINGS,
     METER_TYPE_GAS,
     METER_TYPE_WATER,
-    UNIT_LITERS,
 )
 from .meter import ManualEnergyMetering
 
@@ -63,7 +63,7 @@ class ManualEnergyMeteringSensor(SensorEntity):
         self._attr_native_unit_of_measurement = meter.unit
         if meter.meter_type == METER_TYPE_WATER:
             self._attr_device_class = SensorDeviceClass.WATER
-        elif meter.meter_type == METER_TYPE_GAS and meter.unit == UNIT_LITERS:
+        elif meter.meter_type == METER_TYPE_GAS and meter.unit_class == "volume":
             self._attr_device_class = SensorDeviceClass.GAS
         else:
             self._attr_device_class = SensorDeviceClass.ENERGY
@@ -81,10 +81,11 @@ class ManualEnergyMeteringSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, object]:
-        """Expose reading and Energy Dashboard metadata."""
+        """Expose readings in their recorded unit and Energy Dashboard metadata."""
         latest = self._meter.latest_reading
         return {
             CONF_METER_TYPE: self._meter.meter_type,
+            ATTR_METER_UNIT: self._meter.unit,
             ATTR_READING_COUNT: len(self._meter.readings),
             ATTR_LAST_READING: latest.value if latest else None,
             ATTR_LAST_READING_TIMESTAMP: (

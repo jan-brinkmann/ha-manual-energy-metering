@@ -20,10 +20,10 @@ from sqlalchemy.orm import aliased
 
 from .const import (
     DOMAIN,
-    ELECTRICITY_UNITS,
     METER_TYPE_ELECTRICITY,
     METER_TYPE_GAS,
     METER_TYPE_WATER,
+    UNIT_CUBIC_METERS,
     UNIT_KWH,
     UNIT_LITERS,
 )
@@ -33,6 +33,7 @@ from .csv_transfer import (
     MAX_METER_NAME_LENGTH,
     clamp_negative_statistics_changes,
     convert_readings_unit,
+    csv_unit_options,
     export_filename,
     export_meter_csv,
     export_statistics_csv,
@@ -46,12 +47,12 @@ _ENERGY_UNITS = frozenset(str(unit) for unit in UnitOfEnergy)
 _VOLUME_UNITS = frozenset(str(unit) for unit in UnitOfVolume)
 _TARGETS = {
     "energy": {
-        "unit": UNIT_KWH,
-        "meter_types": (METER_TYPE_ELECTRICITY, METER_TYPE_GAS),
+        METER_TYPE_ELECTRICITY: UNIT_KWH,
+        METER_TYPE_GAS: UNIT_KWH,
     },
     "volume": {
-        "unit": UNIT_LITERS,
-        "meter_types": (METER_TYPE_GAS, METER_TYPE_WATER),
+        METER_TYPE_GAS: UNIT_CUBIC_METERS,
+        METER_TYPE_WATER: UNIT_LITERS,
     },
 }
 
@@ -113,24 +114,21 @@ def _loaded_manual_meters(
 
 
 def _manual_meter_item(meter: ManualEnergyMetering) -> dict[str, Any]:
-    """Describe one manual meter using only its entered readings."""
+    """Describe a manual meter's entered readings and compatible CSV units."""
     readings = meter.readings
     first = readings[0] if readings else None
     last = readings[-1] if readings else None
-    unit_class = (
-        "volume"
-        if meter.meter_type == METER_TYPE_WATER
-        or (meter.meter_type == METER_TYPE_GAS and meter.unit == UNIT_LITERS)
-        else "energy"
-    )
     return {
         "statistic_id": meter.statistic_id,
         "name": meter.name,
         "source": DOMAIN,
         "source_unit": meter.unit,
-        "unit_class": unit_class,
+        "unit_class": meter.unit_class,
         "target_unit": meter.unit,
         "meter_types": [meter.meter_type],
+        "available_units": {
+            meter.meter_type: csv_unit_options(meter.meter_type, meter.unit)
+        },
         "known_meter_type": meter.meter_type,
         "export_mode": "readings",
         "first_reading": (
@@ -221,7 +219,7 @@ def _statistics_reading_bounds(
 async def async_list_exportable_statistics(
     hass: HomeAssistant,
 ) -> list[dict[str, Any]]:
-    """List manual meters and compatible statistics available for export."""
+    """List exportable meters with CSV unit choices ordered by preference."""
     metadata_items = await async_list_statistic_ids(
         hass, statistic_type="sum"
     )
@@ -240,7 +238,7 @@ async def async_list_exportable_statistics(
             continue
         if (unit_class := _normalized_unit_class(metadata)) is None:
             continue
-        target = _TARGETS[unit_class]
+        target_units = _TARGETS[unit_class]
         result.append(
             {
                 "statistic_id": statistic_id,
@@ -250,8 +248,13 @@ async def async_list_exportable_statistics(
                     metadata.get("statistics_unit_of_measurement") or ""
                 ),
                 "unit_class": unit_class,
-                "target_unit": target["unit"],
-                "meter_types": list(target["meter_types"]),
+                # Older panels use this single default for the whole unit class.
+                "target_unit": UNIT_KWH if unit_class == "energy" else UNIT_LITERS,
+                "meter_types": list(target_units),
+                "available_units": {
+                    meter_type: csv_unit_options(meter_type, unit)
+                    for meter_type, unit in target_units.items()
+                },
                 "known_meter_type": None,
                 "export_mode": "statistics",
             }
@@ -305,14 +308,9 @@ async def async_export_statistic(
             "statistics_invalid_meter_type",
             "The meter type is incompatible with this statistic.",
         )
-    target_unit = str(requested_unit or metadata["target_unit"]).strip()
-    if (
-        meter_type == METER_TYPE_ELECTRICITY
-        and target_unit not in ELECTRICITY_UNITS
-    ) or (
-        meter_type != METER_TYPE_ELECTRICITY
-        and target_unit != metadata["target_unit"]
-    ):
+    available_units = metadata["available_units"][meter_type]
+    target_unit = str(requested_unit or available_units[0]).strip()
+    if target_unit not in available_units:
         raise CsvTransferError(
             "statistics_invalid_unit",
             "The selected export unit is incompatible with this meter.",

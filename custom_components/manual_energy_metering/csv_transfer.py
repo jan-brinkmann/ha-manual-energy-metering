@@ -42,13 +42,17 @@ MAX_CSV_BYTES = 20 * 1024 * 1024
 MAX_CSV_READINGS = 100_000
 MAX_METER_NAME_LENGTH = 255
 ONE_HOUR = timedelta(hours=1)
-ELECTRICITY_CSV_UNITS = ("Wh", "kWh")
 _NUMBER_PATTERN = re.compile(
     r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"
 )
+# Each pair lists the smaller unit first.
+_CONVERTIBLE_UNITS = {
+    "electricity": ("Wh", "kWh"),
+    "gas": ("L", "m³"),
+}
 _ALLOWED_UNITS = {
-    "electricity": frozenset(ELECTRICITY_CSV_UNITS),
-    "gas": frozenset({"kWh", "L"}),
+    "electricity": frozenset(_CONVERTIBLE_UNITS["electricity"]),
+    "gas": frozenset(("kWh", *_CONVERTIBLE_UNITS["gas"])),
     "water": frozenset({"L"}),
 }
 
@@ -96,13 +100,21 @@ class MeterCsv:
     excluded_hour_starts: tuple[datetime, ...] = ()
 
 
+def csv_unit_options(meter_type: str, source_unit: str) -> tuple[str, ...]:
+    """Return compatible CSV units, starting with the validated source unit."""
+    units = _CONVERTIBLE_UNITS.get(meter_type, ())
+    if source_unit in units:
+        return (source_unit, *(unit for unit in units if unit != source_unit))
+    return (source_unit,)
+
+
 def convert_meter_value(
     value: float,
     meter_type: str,
     source_unit: str,
     target_unit: str,
 ) -> float:
-    """Convert one meter value between selectable electricity units."""
+    """Scale one meter value or raise CsvTransferError for incompatible units."""
     if (
         meter_type not in _ALLOWED_UNITS
         or source_unit not in _ALLOWED_UNITS[meter_type]
@@ -118,11 +130,12 @@ def convert_meter_value(
         )
     if source_unit == target_unit:
         return numeric_value
-    if meter_type != "electricity":
+    units = _CONVERTIBLE_UNITS.get(meter_type, ())
+    if source_unit not in units or target_unit not in units:
         raise CsvTransferError(
             "csv_invalid_meter", "This meter unit cannot be converted."
         )
-    factor = 1000.0 if source_unit == "kWh" else 0.001
+    factor = 1000.0 if source_unit == units[1] else 0.001
     converted = numeric_value * factor
     if not math.isfinite(converted):
         raise CsvTransferError(
@@ -150,7 +163,7 @@ def convert_readings_unit(
 
 
 def convert_meter_csv_unit(meter: MeterCsv, target_unit: str) -> MeterCsv:
-    """Return an imported meter converted to a selectable electricity unit."""
+    """Return all imported meter values in a compatible target unit."""
     target_unit = str(target_unit).strip()
     convert_meter_value(0, meter.meter_type, meter.unit, target_unit)
     readings = convert_readings_unit(

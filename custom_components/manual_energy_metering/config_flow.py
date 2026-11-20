@@ -36,9 +36,7 @@ from .const import (
     DEFAULT_VISION_MODEL,
     DEFAULT_VISION_PROMPT,
     DOMAIN,
-    ELECTRICITY_UNITS,
-    FIXED_UNITS,
-    METER_TYPE_ELECTRICITY,
+    MANUAL_METER_UNITS,
     METER_TYPES,
     UNIT_KWH,
 )
@@ -161,9 +159,10 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
             self._import_readings = None
             self._import_statistics = None
             self._meter_data = user_input
-            if user_input[CONF_METER_TYPE] == METER_TYPE_ELECTRICITY:
+            units = MANUAL_METER_UNITS[user_input[CONF_METER_TYPE]]
+            if len(units) > 1:
                 return await self.async_step_unit()
-            self._meter_data[CONF_UNIT] = FIXED_UNITS[user_input[CONF_METER_TYPE]]
+            self._meter_data[CONF_UNIT] = units[0]
             return await self.async_step_vision()
 
         return self.async_show_form(
@@ -265,18 +264,19 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_unit(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Choose Wh or kWh for an electricity meter."""
+        """Choose a supported unit for the new meter type."""
         if user_input is not None:
             self._meter_data.update(user_input)
             return await self.async_step_vision()
 
+        units = MANUAL_METER_UNITS[self._meter_data[CONF_METER_TYPE]]
         return self.async_show_form(
             step_id="unit",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_UNIT, default=UNIT_KWH): SelectSelector(
                         SelectSelectorConfig(
-                            options=list(ELECTRICITY_UNITS),
+                            options=list(units),
                             mode=SelectSelectorMode.DROPDOWN,
                         )
                     )

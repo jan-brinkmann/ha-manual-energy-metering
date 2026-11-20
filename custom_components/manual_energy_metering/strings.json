@@ -20,14 +20,14 @@
       },
       "import_csv": {
         "title": "Import a meter from CSV",
-        "description": "The import page is part of your own Home Assistant instance. No CSV data is sent to an external website or service. Open the page, select an exported CSV file, confirm the suggested or a new meter name, and choose Wh or kWh for an electricity meter."
+        "description": "The import page is part of your own Home Assistant instance. No CSV data is sent to an external website or service. Open the page, select an exported CSV file, confirm the suggested or a new meter name, and choose a unit if the page offers a choice."
       },
       "export_statistics": {
         "title": "Export an Energy Dashboard meter",
-        "description": "The export page is part of your own Home Assistant instance. No meter data is sent to an external website or service. Open the page, select a compatible meter, and choose Wh or kWh for an electricity meter."
+        "description": "The export page is part of your own Home Assistant instance. No meter data is sent to an external website or service. Open the page, select a compatible meter, and choose a CSV unit if the page offers a choice."
       },
       "unit": {
-        "title": "Choose the electricity unit",
+        "title": "Choose the meter unit",
         "data": {
           "unit": "Unit"
         }

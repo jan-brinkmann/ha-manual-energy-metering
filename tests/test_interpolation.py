@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 import json
 from pathlib import Path
 import sys
@@ -24,6 +24,7 @@ from csv_transfer import (  # noqa: E402
     STATISTICS_CSV_FORMAT_VERSION,
     clamp_negative_statistics_changes,
     convert_meter_csv_unit,
+    csv_unit_options,
     export_filename,
     export_meter_csv,
     export_statistics_csv,
@@ -503,16 +504,74 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(converted.statistics[0].sum, 0.25)
         self.assertEqual(converted.statistics[1].original_change, -0.002)
 
-    def test_non_electricity_csv_unit_cannot_be_changed(self) -> None:
-        """Reject selectable unit conversion for non-electricity meters."""
+    def test_gas_readings_round_trip_in_cubic_meters(self) -> None:
+        """Preserve cubic meter readings and offer liters as a CSV alternative."""
+        reading = Reading(datetime(2026, 1, 1, tzinfo=UTC), 12.375)
+        content = export_meter_csv("Gas", "gas", "m³", [reading])
+        imported = parse_meter_csv_bytes(content.encode())
+        self.assertEqual((imported.meter_type, imported.unit), ("gas", "m³"))
+        self.assertEqual(imported.readings[0].timestamp, reading.timestamp)
+        self.assertEqual(imported.readings[0].value, reading.value)
+        self.assertEqual(csv_unit_options("gas", "m³"), ("m³", "L"))
+
+        liters = convert_meter_csv_unit(imported, "L")
+        self.assertEqual(liters.readings[0].value, 12375)
+        self.assertEqual(convert_meter_csv_unit(liters, "m³"), imported)
+
+    def test_gas_volume_statistics_convert_to_cubic_meters(self) -> None:
+        """Scale legacy liter histories and retain corrections in cubic meters."""
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=1)
+        content = export_statistics_csv(
+            "Gas",
+            "gas",
+            "L",
+            "sensor.gas",
+            [
+                CsvStatisticsHour(start, end, 1250, 250, 250),
+                CsvStatisticsHour(end, end + timedelta(hours=1), 1250, 0, 250, -10),
+            ],
+        )
+        liters = parse_meter_csv_bytes(content.encode())
+        self.assertEqual(csv_unit_options("gas", liters.unit), ("L", "m³"))
+
+        converted = convert_meter_csv_unit(liters, "m³")
+        self.assertEqual(converted.unit, "m³")
+        self.assertEqual(converted.readings[0].value, 1.0)
+        self.assertEqual(converted.readings[-1].value, 1.25)
+        self.assertEqual(
+            converted.statistics[0], CsvStatisticsHour(start, end, 1.25, 0.25, 0.25)
+        )
+        self.assertEqual(converted.statistics[1].original_change, -0.01)
+        self.assertEqual(converted.source_statistic_id, liters.source_statistic_id)
+        reexported = export_statistics_csv(
+            "Gas", "gas", "m³", "sensor.gas", converted.statistics
+        )
+        self.assertEqual(parse_meter_csv_bytes(reexported.encode()), converted)
+
+    def test_gas_csv_cannot_convert_energy_to_volume(self) -> None:
+        """Reject conversions between gas energy and gas volume in either direction."""
+        for source, target in (("kWh", "m³"), ("m³", "kWh")):
+            with self.subTest(source=source, target=target):
+                imported = parse_meter_csv_bytes(
+                    export_meter_csv("Gas", "gas", source, []).encode()
+                )
+                with self.assertRaises(CsvTransferError) as caught:
+                    convert_meter_csv_unit(imported, target)
+                self.assertEqual(caught.exception.code, "csv_invalid_meter")
+        self.assertEqual(csv_unit_options("gas", "kWh"), ("kWh",))
+
+    def test_water_csv_unit_cannot_be_changed(self) -> None:
+        """Keep water CSV files in liters, including during reimport."""
         imported = parse_meter_csv_bytes(
             export_meter_csv("Water", "water", "L", []).encode()
         )
 
-        with self.assertRaises(CsvTransferError) as caught:
-            convert_meter_csv_unit(imported, "kWh")
-
-        self.assertEqual(caught.exception.code, "csv_invalid_meter")
+        for target in ("kWh", "m³"):
+            with self.subTest(target=target):
+                with self.assertRaises(CsvTransferError) as caught:
+                    convert_meter_csv_unit(imported, target)
+                self.assertEqual(caught.exception.code, "csv_invalid_meter")
 
     def test_import_sorts_rows_chronologically(self) -> None:
         """Sort imported reading rows by their timestamps."""

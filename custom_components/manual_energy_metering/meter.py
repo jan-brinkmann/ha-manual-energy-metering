@@ -32,6 +32,7 @@ from .const import (
     METER_TYPE_WATER,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
+    UNIT_CUBIC_METERS,
     UNIT_LITERS,
 )
 from .interpolation import (
@@ -112,6 +113,16 @@ class ManualEnergyMetering:
     def statistic_id(self) -> str:
         """Return the external statistic ID exposed to the Energy Dashboard."""
         return f"{DOMAIN}:{self.meter_id}"
+
+    @property
+    def unit_class(self) -> str:
+        """Return the recorder unit class for the configured meter unit."""
+        if self.meter_type == METER_TYPE_WATER or (
+            self.meter_type == METER_TYPE_GAS
+            and self.unit in (UNIT_LITERS, UNIT_CUBIC_METERS)
+        ):
+            return "volume"
+        return "energy"
 
     @property
     def readings(self) -> tuple[Reading, ...]:
@@ -423,19 +434,13 @@ class ManualEnergyMetering:
 
     def _statistics_metadata(self) -> StatisticMetaData:
         """Return metadata for this meter's external statistic."""
-        unit_class = (
-            "volume"
-            if self.meter_type == METER_TYPE_WATER
-            or (self.meter_type == METER_TYPE_GAS and self.unit == UNIT_LITERS)
-            else "energy"
-        )
         return StatisticMetaData(
             has_sum=True,
             mean_type=StatisticMeanType.NONE,
             name=self.name,
             source=DOMAIN,
             statistic_id=self.statistic_id,
-            unit_class=unit_class,
+            unit_class=self.unit_class,
             unit_of_measurement=self.unit,
         )
 

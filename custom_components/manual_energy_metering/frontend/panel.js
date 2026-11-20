@@ -2,7 +2,6 @@ const DOMAIN = "manual_energy_metering";
 const STATIC_URL = `/${DOMAIN}_static`;
 const MAX_CSV_BYTES = 20 * 1024 * 1024;
 const STATISTICS_PAGE_SIZE = 100;
-const ELECTRICITY_UNITS = ["Wh", "kWh"];
 
 const METER_ICONS = {
   electricity: "electricity.png",
@@ -81,7 +80,7 @@ const TRANSLATIONS = {
       "Select a CSV file exported by Manual Energy Metering. The original name is suggested and can be replaced.",
     csvFile: "CSV file",
     importedMeterName: "Name of the new meter",
-    importedMeterUnit: "Unit of the imported electricity meter",
+    importedMeterUnit: "Unit of the imported meter",
     importedMeterDetails: "{count} readings · {type} · {unit}",
     importedStatisticsDetails: "{count} hourly values · {type} · {unit}",
     importMeter: "Continue with this meter",
@@ -204,7 +203,7 @@ const TRANSLATIONS = {
       "Wähle eine von der Manuellen Energiemessung exportierte CSV-Datei. Der ursprüngliche Name wird vorgeschlagen und kann ersetzt werden.",
     csvFile: "CSV-Datei",
     importedMeterName: "Name des neuen Zählers",
-    importedMeterUnit: "Einheit des importierten Stromzählers",
+    importedMeterUnit: "Einheit des importierten Zählers",
     importedMeterDetails: "{count} Zählerstände · {type} · {unit}",
     importedStatisticsDetails: "{count} Stundenwerte · {type} · {unit}",
     importMeter: "Mit diesem Zähler fortfahren",
@@ -463,7 +462,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         return;
       }
       this._data = data;
-      if (!ELECTRICITY_UNITS.includes(this._readingsExportUnit)) {
+      if (!data.available_units?.includes(this._readingsExportUnit)) {
         this._readingsExportUnit = data.unit;
       }
       this._page = data.page;
@@ -510,6 +509,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     const t = this._t;
     const title = this._data?.name || t.fallbackTitle;
     const unit = this._data?.unit ? ` (${this._data.unit})` : "";
+    const exportUnits = this._data?.available_units || [];
     const readings = this._data?.readings || [];
     const loading = this._entryId && !this._data;
     const showForm = Boolean(
@@ -550,14 +550,14 @@ class ManualEnergyMeteringPanel extends HTMLElement {
               this._data
                 ? `<div class="heading-actions">
                     ${
-                      this._data.meter_type === "electricity"
+                      exportUnits.length > 1
                         ? `<label class="compact-unit-picker">
                             <span>${this._escape(t.exportUnit)}</span>
                             <select id="readings-export-unit" ${
                               this._busy ? "disabled" : ""
                             }>
                               ${this._renderUnitOptions(
-                                ELECTRICITY_UNITS,
+                                exportUnits,
                                 this._readingsExportUnit
                               )}
                             </select>
@@ -647,9 +647,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       (item) => item.statistic_id === this._selectedStatisticId
     );
     const exportUnits =
-      selected && this._selectedMeterType === "electricity"
-        ? ELECTRICITY_UNITS
-        : [selected?.target_unit].filter(Boolean);
+      selected?.available_units?.[this._selectedMeterType] || [];
     const conversion = selected
       ? t.statisticsUnitConversion
           .replace("{source}", selected.source_unit || "-")
@@ -847,7 +845,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this.shadowRoot
       .querySelector("#statistics-export-unit")
       ?.addEventListener("change", (event) =>
-        this._changeStatisticsExportUnit(event.target.value)
+        this._changeStatisticsExportUnit(event.target.value, exportUnits)
       );
     this.shadowRoot
       .querySelectorAll("[data-statistic-id]")
@@ -1083,7 +1081,9 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         : detectedTypes.find((meterType) =>
             compatibleTypes.includes(meterType)
           ) || compatibleTypes[0] || "";
-    this._selectedExportUnit = item?.target_unit || "";
+    this._selectedExportUnit =
+      item?.available_units?.[this._selectedMeterType]?.[0] ||
+      item?.target_unit || "";
   }
 
   /**
@@ -1161,12 +1161,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Select an electricity CSV unit while preserving list scroll position.
+   * Select a compatible CSV unit while preserving list scroll position.
    *
    * @param {string} value Requested export unit.
+   * @param {string[]} availableUnits Units for the selected meter type.
    */
-  _changeStatisticsExportUnit(value) {
-    if (this._busy || !ELECTRICITY_UNITS.includes(value)) {
+  _changeStatisticsExportUnit(value, availableUnits) {
+    if (this._busy || !availableUnits.includes(value)) {
       return;
     }
     const scrollTop =

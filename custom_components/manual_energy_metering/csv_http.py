@@ -19,14 +19,13 @@ from .const import (
     CONF_CSV_CONTENT,
     CONF_UNIT,
     DOMAIN,
-    ELECTRICITY_UNITS,
-    METER_TYPE_ELECTRICITY,
 )
 from .csv_transfer import (
     MAX_CSV_BYTES,
     CsvTransferError,
     MeterCsv,
     convert_meter_csv_unit,
+    csv_unit_options,
     decode_csv,
     parse_meter_csv,
     validate_meter_name,
@@ -93,10 +92,8 @@ class CsvInspectView(HomeAssistantView):
                 "reading_count": len(imported.readings),
                 "statistics_count": len(imported.statistics),
                 "format_version": imported.format_version,
-                "available_units": (
-                    list(ELECTRICITY_UNITS)
-                    if imported.meter_type == METER_TYPE_ELECTRICITY
-                    else [imported.unit]
+                "available_units": csv_unit_options(
+                    imported.meter_type, imported.unit
                 ),
             }
         )

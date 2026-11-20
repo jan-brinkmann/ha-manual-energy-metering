@@ -29,6 +29,7 @@ from .csv_transfer import (
     CsvTransferError,
     convert_meter_value,
     convert_readings_unit,
+    csv_unit_options,
     export_filename,
     export_meter_csv,
     export_statistics_csv,
@@ -88,7 +89,7 @@ def _meter_for_message(
 def _meter_payload(
     meter: ManualEnergyMetering, requested_page: int | None = None
 ) -> dict[str, Any]:
-    """Serialize one page of readings and its pagination metadata."""
+    """Serialize one page of readings, pagination, and allowed export units."""
     readings, page, page_count = paginate_readings(
         meter.readings, requested_page
     )
@@ -97,6 +98,7 @@ def _meter_payload(
         CONF_METER_TYPE: meter.meter_type,
         ATTR_STATISTIC_ID: meter.statistic_id,
         "unit": meter.unit,
+        "available_units": csv_unit_options(meter.meter_type, meter.unit),
         "reading_count": len(meter.readings),
         "page": page,
         "page_count": page_count,

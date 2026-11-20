@@ -223,17 +223,21 @@ Enter the address of an OpenAI-compatible vision provider, such as
 one. Model and prompt are prefilled and can be adjusted for each meter. Image
 compression can also be enabled or disabled per meter.
 
-Use **Take photo** or **Upload photo** in the dashboard card. The integration
-sends the image to the configured provider but does not store it permanently.
-The provider may apply its own storage and privacy policy. A compact progress
-bar shows the current recognition stage and marks the last reached stage if an
-error occurs.
+For **Upload photo**, choose **Date only** or **Date and meter reading** in the
+dashboard card. The browser remembers your choice for each meter across page
+reloads. **Date only** reads the capture date and time from the photo metadata
+in your browser. If the metadata is missing, the form keeps its current date and
+time. Enter the meter reading manually. Without a configured provider, the
+switch is disabled and uploads use **Date only**.
 
-The recognized reading and reading time are shown for confirmation. For an
-uploaded file, the capture date and time from its image metadata are used when
-available; otherwise the current time is used. Correct the values if necessary
-and select **Add reading** to save the record. Without a configured provider,
-all manual functions remain available.
+**Date and meter reading** and **Take photo** send the image to the configured
+provider for recognition. The integration does not store it permanently. The
+provider may apply its own storage and privacy policy. The progress bar shows
+the current recognition stage and marks the last reached stage if an error
+occurs. For an uploaded photo, the capture time is used when available.
+Otherwise, the form uses the current time.
+
+Review the reading and date, then select **Add reading** to save the record.
 
 The integration includes the card and registers it automatically. Reload the
 browser if the card is missing from the card picker after setup. After an

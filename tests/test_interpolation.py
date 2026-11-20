@@ -16,14 +16,18 @@ sys.path.insert(0, str(MODULE_DIR))
 
 import interpolation as interpolation_module  # noqa: E402
 from csv_transfer import (  # noqa: E402
+    CONF_GAS_CALORIFIC_VALUE,
+    CONF_GAS_CORRECTION_FACTOR,
     CSV_COLUMNS,
     LEGACY_STATISTICS_CSV_COLUMNS,
     STATISTICS_CSV_COLUMNS,
     CsvStatisticsHour,
     CsvTransferError,
+    GasConversion,
     STATISTICS_CSV_FORMAT_VERSION,
     clamp_negative_statistics_changes,
     convert_meter_csv_unit,
+    convert_meter_value,
     csv_unit_options,
     export_filename,
     export_meter_csv,
@@ -504,19 +508,54 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(converted.statistics[0].sum, 0.25)
         self.assertEqual(converted.statistics[1].original_change, -0.002)
 
-    def test_gas_readings_round_trip_in_cubic_meters(self) -> None:
-        """Preserve cubic meter readings and offer liters as a CSV alternative."""
+    def test_gas_readings_round_trip_in_energy_and_volume_units(self) -> None:
+        """Preserve gas readings and convert within each unit pair."""
         reading = Reading(datetime(2026, 1, 1, tzinfo=UTC), 12.375)
-        content = export_meter_csv("Gas", "gas", "m³", [reading])
-        imported = parse_meter_csv_bytes(content.encode())
-        self.assertEqual((imported.meter_type, imported.unit), ("gas", "m³"))
-        self.assertEqual(imported.readings[0].timestamp, reading.timestamp)
-        self.assertEqual(imported.readings[0].value, reading.value)
-        self.assertEqual(csv_unit_options("gas", "m³"), ("m³", "L"))
+        for larger, smaller in (("m³", "L"), ("MWh", "kWh")):
+            with self.subTest(unit=larger):
+                content = export_meter_csv("Gas", "gas", larger, [reading])
+                imported = parse_meter_csv_bytes(content.encode())
+                self.assertEqual(
+                    (imported.meter_type, imported.unit), ("gas", larger)
+                )
+                self.assertEqual(imported.readings[0].timestamp, reading.timestamp)
+                self.assertEqual(imported.readings[0].value, reading.value)
+                self.assertEqual(
+                    csv_unit_options("gas", larger), (larger, smaller)
+                )
+                self.assertEqual(
+                    csv_unit_options("gas", smaller), (smaller, larger)
+                )
 
-        liters = convert_meter_csv_unit(imported, "L")
-        self.assertEqual(liters.readings[0].value, 12375)
-        self.assertEqual(convert_meter_csv_unit(liters, "m³"), imported)
+                converted = convert_meter_csv_unit(imported, smaller)
+                self.assertEqual(converted.readings[0].value, 12375)
+                self.assertEqual(
+                    convert_meter_csv_unit(converted, larger), imported
+                )
+
+    def test_gas_energy_statistics_round_trip_in_megawatt_hours(self) -> None:
+        """Convert gas energy histories and preserve values through CSV."""
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        end = start + timedelta(hours=1)
+        content = export_statistics_csv(
+            "Gas",
+            "gas",
+            "kWh",
+            "sensor.gas",
+            [CsvStatisticsHour(start, end, 1250, 250, 250)],
+        )
+        imported = parse_meter_csv_bytes(content.encode())
+        converted = convert_meter_csv_unit(imported, "MWh")
+        self.assertEqual(converted.unit, "MWh")
+        self.assertEqual(converted.readings[-1].value, 1.25)
+        self.assertEqual(
+            converted.statistics, (CsvStatisticsHour(start, end, 1.25, 0.25, 0.25),)
+        )
+
+        exported = export_statistics_csv(
+            "Gas", "gas", "MWh", "sensor.gas", converted.statistics
+        )
+        self.assertEqual(parse_meter_csv_bytes(exported.encode()), converted)
 
     def test_gas_volume_statistics_convert_to_cubic_meters(self) -> None:
         """Scale legacy liter histories and retain corrections in cubic meters."""
@@ -550,8 +589,10 @@ class CsvTransferTests(unittest.TestCase):
         self.assertEqual(parse_meter_csv_bytes(reexported.encode()), converted)
 
     def test_gas_csv_cannot_convert_energy_to_volume(self) -> None:
-        """Reject conversions between gas energy and gas volume in either direction."""
-        for source, target in (("kWh", "m³"), ("m³", "kWh")):
+        """Require conversion factors for conversions between gas quantities."""
+        for source, target in (
+            ("kWh", "m³"), ("m³", "kWh"), ("MWh", "L"), ("L", "MWh")
+        ):
             with self.subTest(source=source, target=target):
                 imported = parse_meter_csv_bytes(
                     export_meter_csv("Gas", "gas", source, []).encode()
@@ -559,7 +600,74 @@ class CsvTransferTests(unittest.TestCase):
                 with self.assertRaises(CsvTransferError) as caught:
                     convert_meter_csv_unit(imported, target)
                 self.assertEqual(caught.exception.code, "csv_invalid_meter")
-        self.assertEqual(csv_unit_options("gas", "kWh"), ("kWh",))
+
+    def test_gas_csv_uses_custom_calorific_value_and_correction(self) -> None:
+        """Apply both factors in either direction, including prefix scaling."""
+        factors = GasConversion.from_input(
+            {CONF_GAS_CALORIFIC_VALUE: "12.5", CONF_GAS_CORRECTION_FACTOR: "0.8"}
+        )
+        self.assertEqual(factors.kwh_per_cubic_meter, 10.0)
+        self.assertAlmostEqual(GasConversion.from_input({}).kwh_per_cubic_meter, 10.45)
+        self.assertEqual(
+            csv_unit_options("gas", "m³", allow_gas_conversion=True),
+            ("m³", "L", "kWh", "MWh"),
+        )
+        for source, source_value, target, target_value in (
+            ("m³", 100.0, "kWh", 1000.0),
+            ("kWh", 1000.0, "m³", 100.0),
+            ("L", 100_000.0, "MWh", 1.0),
+            ("MWh", 1.0, "L", 100_000.0),
+        ):
+            with self.subTest(source=source, target=target):
+                self.assertAlmostEqual(
+                    convert_meter_value(
+                        source_value, "gas", source, target, gas_conversion=factors
+                    ),
+                    target_value,
+                )
+
+    def test_gas_csv_statistics_convert_across_quantities(self) -> None:
+        """Scale statistics, corrected changes, and readings while preserving gaps."""
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        hours = [start + timedelta(hours=offset) for offset in range(4)]
+        content = export_statistics_csv(
+            "Gas", "gas", "m³", "sensor.gas",
+            [
+                CsvStatisticsHour(hours[0], hours[1], 125, 25, 25),
+                CsvStatisticsHour(hours[2], hours[3], 125, 0, 25, -2),
+            ],
+        )
+        imported = parse_meter_csv_bytes(content.encode())
+        converted = convert_meter_csv_unit(
+            imported, "kWh", gas_conversion=GasConversion(12.5, 0.8)
+        )
+        self.assertEqual(converted.unit, "kWh")
+        self.assertEqual(converted.readings[0].value, 1000)
+        self.assertEqual(converted.readings[-1].value, 1250)
+        self.assertEqual(converted.excluded_hour_starts, (hours[1],))
+        self.assertEqual(
+            converted.statistics,
+            (
+                CsvStatisticsHour(hours[0], hours[1], 1250, 250, 250),
+                CsvStatisticsHour(hours[2], hours[3], 1250, 0, 250, -20),
+            ),
+        )
+
+    def test_gas_conversion_rejects_invalid_factors(self) -> None:
+        """Reject missing numeric input, nonpositive values, and nonfinite products."""
+        for value, correction in (
+            ("", 1), (True, 1), (0, 1), (1, -1), ("NaN", 1), (1, "inf"),
+            (1e300, 1e300), (1e-300, 1e-300),
+        ):
+            with self.subTest(value=value, correction=correction):
+                with self.assertRaises(CsvTransferError) as caught:
+                    GasConversion.from_input(
+                        {
+                            CONF_GAS_CALORIFIC_VALUE: value,
+                            CONF_GAS_CORRECTION_FACTOR: correction,
+                        }
+                    )
+                self.assertEqual(caught.exception.code, "invalid_gas_conversion")
 
     def test_water_csv_unit_cannot_be_changed(self) -> None:
         """Keep water CSV files in liters, including during reimport."""
@@ -1371,7 +1479,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("async_step_reconfigure", config_flow)
         self.assertIn("TextSelectorType.PASSWORD", config_flow)
         self.assertIn("CONF_VISION_COMPRESS_IMAGE", config_flow)
-        self.assertIn("data_updates={**entry.data, **vision_data}", config_flow)
+        self.assertIn("data_updates={**entry.data, **updates}", config_flow)
         self.assertIn("async_migrate_entry", init)
         self.assertIn(
             "data[CONF_VISION_COMPRESS_IMAGE] = DEFAULT_VISION_COMPRESS_IMAGE",

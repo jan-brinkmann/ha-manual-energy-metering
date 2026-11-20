@@ -29,7 +29,13 @@
       "unit": {
         "title": "Einheit des Zählers auswählen",
         "data": {
-          "unit": "Einheit"
+          "unit": "Einheit",
+          "gas_calorific_value": "Brennwert",
+          "gas_correction_factor": "Zustandszahl"
+        },
+        "data_description": {
+          "gas_calorific_value": "Verwende den Brennwert aus der Gasrechnung für die CSV-Umrechnung zwischen Volumen und Energie.",
+          "gas_correction_factor": "Verwende die Zustandszahl aus der Gasrechnung für den betreffenden Zeitraum."
         }
       },
       "vision": {
@@ -47,7 +53,7 @@
         }
       },
       "reconfigure": {
-        "title": "Fotoerkennung konfigurieren",
+        "title": "Zähler neu konfigurieren",
         "description": "Änderungen gelten nur für diesen Zähler. Lasse das API-Token leer, um das gespeicherte Token beizubehalten, oder wähle Gespeichertes API-Token entfernen, um es zu löschen.",
         "data": {
           "vision_api_url": "Provider-Adresse",
@@ -55,19 +61,24 @@
           "vision_model": "Modell",
           "vision_prompt": "Prompt",
           "vision_compress_image": "Bild vor der Erkennung komprimieren",
-          "clear_vision_api_token": "Gespeichertes API-Token entfernen"
+          "clear_vision_api_token": "Gespeichertes API-Token entfernen",
+          "gas_calorific_value": "Brennwert",
+          "gas_correction_factor": "Zustandszahl"
         },
         "data_description": {
-          "vision_compress_image": "Aktiviert: Konvertiert das Foto in JPEG, begrenzt die längste Kante auf 1600 Pixel und die Ausgabegröße auf 2 MiB und entfernt eingebettete Metadaten. Deaktiviert: Sendet eine JPEG-, PNG- oder WebP-Originaldatei bis 20 MiB unverändert einschließlich eingebetteter Metadaten. Standardmäßig aktiviert."
+          "vision_compress_image": "Aktiviert: Konvertiert das Foto in JPEG, begrenzt die längste Kante auf 1600 Pixel und die Ausgabegröße auf 2 MiB und entfernt eingebettete Metadaten. Deaktiviert: Sendet eine JPEG-, PNG- oder WebP-Originaldatei bis 20 MiB unverändert einschließlich eingebetteter Metadaten. Standardmäßig aktiviert.",
+          "gas_calorific_value": "Verwende den Brennwert aus der Gasrechnung für die CSV-Umrechnung zwischen Volumen und Energie.",
+          "gas_correction_factor": "Verwende die Zustandszahl aus der Gasrechnung für den betreffenden Zeitraum."
         }
       }
     },
     "error": {
       "invalid_url": "Gib eine gültige HTTP- oder HTTPS-Provider-Adresse ein.",
-      "required": "Dieses Feld ist erforderlich."
+      "required": "Dieses Feld ist erforderlich.",
+      "invalid_gas_conversion": "Gib für Brennwert und Zustandszahl positive, endliche Zahlen ein."
     },
     "abort": {
-      "reconfigure_successful": "Die Einstellungen der Fotoerkennung wurden aktualisiert.",
+      "reconfigure_successful": "Die Zählereinstellungen wurden aktualisiert.",
       "statistics_exported": "Die Zählerdaten wurden exportiert."
     }
   },

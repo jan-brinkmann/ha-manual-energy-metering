@@ -35,6 +35,7 @@ from .const import (
     UNIT_CUBIC_METERS,
     UNIT_LITERS,
 )
+from .csv_transfer import GasConversion
 from .interpolation import (
     DuplicateTimestampError,
     HourlyStatisticsUpdate,
@@ -99,6 +100,11 @@ class ManualEnergyMetering:
         self.meter_id: str = entry.data[CONF_METER_ID]
         self.meter_type: str = entry.data[CONF_METER_TYPE]
         self.unit: str = entry.data[CONF_UNIT]
+        self.gas_conversion = (
+            GasConversion.from_input(entry.data)
+            if self.meter_type == METER_TYPE_GAS
+            else None
+        )
         self._store: Store[dict[str, Any]] = Store(
             hass, STORAGE_VERSION, f"{STORAGE_KEY_PREFIX}.{self.meter_id}"
         )

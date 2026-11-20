@@ -19,10 +19,13 @@ from .const import (
     CONF_CSV_CONTENT,
     CONF_UNIT,
     DOMAIN,
+    METER_TYPE_GAS,
 )
 from .csv_transfer import (
+    DEFAULT_GAS_CONVERSION,
     MAX_CSV_BYTES,
     CsvTransferError,
+    GasConversion,
     MeterCsv,
     convert_meter_csv_unit,
     csv_unit_options,
@@ -78,12 +81,13 @@ class CsvInspectView(HomeAssistantView):
     requires_auth = True
 
     async def post(self, request: web.Request) -> web.Response:
-        """Inspect a CSV file without persisting it."""
+        """Return CSV metadata, offered units, and defaults for gas imports."""
         _require_admin(request)
         try:
             _, imported = await _read_csv(request)
         except CsvTransferError as err:
             return _error_response(err.code, str(err))
+        is_gas = imported.meter_type == METER_TYPE_GAS
         return web.json_response(
             {
                 "name": imported.name,
@@ -93,8 +97,13 @@ class CsvInspectView(HomeAssistantView):
                 "statistics_count": len(imported.statistics),
                 "format_version": imported.format_version,
                 "available_units": csv_unit_options(
-                    imported.meter_type, imported.unit
+                    imported.meter_type,
+                    imported.unit,
+                    allow_gas_conversion=is_gas,
                 ),
+                "gas_conversion": DEFAULT_GAS_CONVERSION.as_input()
+                if is_gas
+                else None,
             }
         )
 
@@ -107,14 +116,21 @@ class CsvImportView(HomeAssistantView):
     requires_auth = True
 
     async def post(self, request: web.Request) -> web.Response:
-        """Validate the file and advance its Manual Energy Metering flow."""
+        """Validate the file and chosen conversion before advancing its flow."""
         _require_admin(request)
         flow_id = request.query.get("flow_id", "").strip()
         try:
             name = validate_meter_name(request.query.get("name", ""))
             content, imported = await _read_csv(request)
+            gas_conversion = (
+                GasConversion.from_input(request.query)
+                if imported.meter_type == METER_TYPE_GAS
+                else None
+            )
             imported = convert_meter_csv_unit(
-                imported, request.query.get(CONF_UNIT, imported.unit)
+                imported,
+                request.query.get(CONF_UNIT, imported.unit),
+                gas_conversion=gas_conversion,
             )
         except CsvTransferError as err:
             return _error_response(err.code, str(err))
@@ -129,6 +145,7 @@ class CsvImportView(HomeAssistantView):
                     "name": name,
                     CONF_CSV_CONTENT: content,
                     CONF_UNIT: imported.unit,
+                    **(gas_conversion.as_input() if gas_conversion else {}),
                 },
             )
         except data_entry_flow.UnknownFlow:

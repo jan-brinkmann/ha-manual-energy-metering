@@ -2,6 +2,7 @@ const DOMAIN = "manual_energy_metering";
 const STATIC_URL = `/${DOMAIN}_static`;
 const MAX_CSV_BYTES = 20 * 1024 * 1024;
 const STATISTICS_PAGE_SIZE = 100;
+const GAS_ENERGY_UNITS = ["kWh", "MWh"];
 
 const METER_ICONS = {
   electricity: "electricity.png",
@@ -45,6 +46,10 @@ const TRANSLATIONS = {
     delete: "Delete",
     exportCsv: "Export CSV",
     exportUnit: "CSV unit",
+    gasCalorificValue: "Calorific value (kWh/m³)",
+    gasCorrectionFactor: "Volume correction factor",
+    gasConversionHelp:
+      "For conversions between gas volume and energy, enter the values from the gas bill for this period.",
     exportedCsv: "The CSV file was downloaded.",
     statisticsExportTitle: "Export an Energy Dashboard meter",
     statisticsExportDescription:
@@ -121,6 +126,8 @@ const TRANSLATIONS = {
       csv_too_many_readings: "The CSV file contains too many readings.",
       csv_unsupported_version: "This CSV format version is not supported.",
       csv_invalid_meter: "The meter type and unit in the CSV do not match.",
+      invalid_gas_conversion:
+        "Enter a positive, finite calorific value and volume correction factor.",
       csv_duplicate_timestamp: "The CSV contains duplicate reading times.",
       csv_non_monotonic: "The readings in the CSV decrease over time.",
       csv_invalid_timestamp: "The CSV contains an invalid reading time.",
@@ -168,6 +175,10 @@ const TRANSLATIONS = {
     delete: "Löschen",
     exportCsv: "CSV exportieren",
     exportUnit: "CSV-Einheit",
+    gasCalorificValue: "Brennwert (kWh/m³)",
+    gasCorrectionFactor: "Zustandszahl",
+    gasConversionHelp:
+      "Verwende für die Umrechnung zwischen Gasvolumen und Energie die Werte aus der Gasrechnung für diesen Zeitraum.",
     exportedCsv: "Die CSV-Datei wurde heruntergeladen.",
     statisticsExportTitle: "Energy-Dashboard-Zähler exportieren",
     statisticsExportDescription:
@@ -245,6 +256,8 @@ const TRANSLATIONS = {
       csv_too_many_readings: "Die CSV-Datei enthält zu viele Zählerstände.",
       csv_unsupported_version: "Diese Version des CSV-Formats wird nicht unterstützt.",
       csv_invalid_meter: "Zählertyp und Einheit in der CSV passen nicht zusammen.",
+      invalid_gas_conversion:
+        "Gib für Brennwert und Zustandszahl positive, endliche Zahlen ein.",
       csv_duplicate_timestamp: "Die CSV enthält doppelte Ablesezeitpunkte.",
       csv_non_monotonic: "Die Zählerstände in der CSV fallen im Zeitverlauf.",
       csv_invalid_timestamp: "Die CSV enthält einen ungültigen Ablesezeitpunkt.",
@@ -294,6 +307,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._importMetadata = undefined;
     this._importName = "";
     this._importUnit = "";
+    this._gasConversion = {};
     this._importComplete = false;
     this._importMessage = undefined;
     this._exportStatistics = undefined;
@@ -648,6 +662,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     );
     const exportUnits =
       selected?.available_units?.[this._selectedMeterType] || [];
+    const targetClass = GAS_ENERGY_UNITS.includes(this._selectedExportUnit)
+      ? "energy"
+      : "volume";
+    const showGasConversion =
+      selected?.gas_conversion &&
+      this._selectedMeterType === "gas" &&
+      selected.unit_class !== targetClass;
     const conversion = selected
       ? t.statisticsUnitConversion
           .replace("{source}", selected.source_unit || "-")
@@ -802,6 +823,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
                             </div>`
                           : ""
                       }
+                      ${showGasConversion ? this._renderGasConversionFields() : ""}
                       <div class="form-actions">
                         <button class="primary" type="submit" ${
                           this._busy || !selected ? "disabled" : ""
@@ -866,6 +888,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       ?.addEventListener("submit", (event) =>
         this._submitStatisticsExport(event)
       );
+    this._bindGasConversionInputs();
   }
 
   /**
@@ -1071,6 +1094,9 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     const item = (this._exportStatistics || []).find(
       (candidate) => candidate.statistic_id === statisticId
     );
+    if (this._selectedStatisticId !== item?.statistic_id) {
+      this._gasConversion = { ...item?.gas_conversion };
+    }
     this._selectedStatisticId = item?.statistic_id || "";
     const detectedTypes = item?.filter_meter_types || [];
     const compatibleTypes = item?.meter_types || [];
@@ -1339,7 +1365,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Request, download, and acknowledge the selected statistic export.
+   * Export the selected statistic with any gas factors entered in the form.
    *
    * @param {SubmitEvent} event Export form submission.
    */
@@ -1353,6 +1379,9 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     ) {
       return;
     }
+    const gasConversion = Object.fromEntries(
+      new FormData(event.currentTarget)
+    );
     this._busy = true;
     this._exportMessage = undefined;
     this._correctedNegativeHours = [];
@@ -1363,6 +1392,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         statistic_id: this._selectedStatisticId,
         meter_type: this._selectedMeterType,
         unit: this._selectedExportUnit,
+        ...gasConversion,
       });
       this._correctedNegativeHours = Array.isArray(
         exported.corrected_negative_hours
@@ -1456,7 +1486,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     )}${unit}`;
   }
 
-  /** Render the CSV inspection, naming, unit-selection, and import workflow. */
+  /** Render CSV inspection, meter settings, and gas factors for import. */
   _renderImport() {
     const t = this._t;
     const metadata = this._importMetadata;
@@ -1537,7 +1567,8 @@ class ManualEnergyMeteringPanel extends HTMLElement {
                                 </select>
                               </label>`
                             : ""
-                        }`
+                        }
+                        ${metadata.gas_conversion ? this._renderGasConversionFields() : ""}`
                       : ""
                   }
                   <div class="form-actions">
@@ -1609,10 +1640,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this.shadowRoot
       .querySelector("#close-import")
       ?.addEventListener("click", () => this._closeImportPage());
+    this._bindGasConversionInputs();
   }
 
   /**
-   * Validate a selected CSV file and request its metadata.
+   * Inspect a selected CSV file and load its meter metadata and gas defaults.
    *
    * @param {Event} event File-input change event.
    */
@@ -1622,6 +1654,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._importMetadata = undefined;
     this._importName = "";
     this._importUnit = "";
+    this._gasConversion = {};
     this._importMessage = undefined;
     if (!file) {
       this._render();
@@ -1652,6 +1685,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       this._importMetadata = metadata;
       this._importName = metadata.name;
       this._importUnit = metadata.unit;
+      this._gasConversion = { ...metadata.gas_conversion };
     } catch (error) {
       this._importMessage = {
         text: this._localizedError(error),
@@ -1690,7 +1724,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Upload the inspected CSV and selected meter settings to the config flow.
+   * Upload the inspected CSV, selected unit, and any gas conversion factors.
    *
    * @param {SubmitEvent} event Import form submission.
    */
@@ -1714,14 +1748,15 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       return;
     }
 
-    this._busy = true;
-    this._importMessage = undefined;
-    this._render();
     const query = new URLSearchParams({
       flow_id: this._importFlowId,
       name,
       unit: this._importUnit,
+      ...Object.fromEntries(new FormData(event.currentTarget)),
     });
+    this._busy = true;
+    this._importMessage = undefined;
+    this._render();
     try {
       const response = await this._hass.fetchWithAuth(
         `/api/${DOMAIN}/csv/import?${query.toString()}`,
@@ -1894,6 +1929,36 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         >${this._escape(unit)}</option>`
       )
       .join("");
+  }
+
+  /** Render the gas conversion inputs for a CSV import or external export. */
+  _renderGasConversionFields() {
+    const fields = {
+      gas_calorific_value: this._t.gasCalorificValue,
+      gas_correction_factor: this._t.gasCorrectionFactor,
+    };
+    return `<div class="gas-conversion-fields">
+      ${Object.entries(fields)
+        .map(([name, label]) => `<label>
+        <span>${this._escape(label)}</span>
+        <input data-gas-conversion name="${name}" type="number"
+          lang="${this._escapeAttribute(this._locale)}" inputmode="decimal"
+          min="0" step="any" required ${this._busy ? "disabled" : ""}
+          value="${this._escapeAttribute(String(this._gasConversion[name] ?? ""))}"
+        />
+      </label>`)
+        .join("")}
+      <small>${this._escape(this._t.gasConversionHelp)}</small>
+    </div>`;
+  }
+
+  /** Preserve edited gas factors when the active CSV form is rendered again. */
+  _bindGasConversionInputs() {
+    this.shadowRoot.querySelectorAll("[data-gas-conversion]").forEach((input) =>
+      input.addEventListener("input", () => {
+        this._gasConversion[input.name] = input.value;
+      })
+    );
   }
 
   /**
@@ -2595,6 +2660,8 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .export-button { height: 40px; min-height: 40px; }
       .import-card { max-width: 876px; }
       .import-form { display: grid; gap: 18px; }
+      .gas-conversion-fields { display: grid; gap: 10px; }
+      .gas-conversion-fields small { color: var(--secondary-text-color); }
       .import-form input[type="file"] {
         height: auto;
         min-height: 48px;

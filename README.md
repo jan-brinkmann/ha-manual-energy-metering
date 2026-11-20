@@ -13,9 +13,6 @@
   >
 </p>
 
-[![HACS](https://img.shields.io/badge/HACS-Default-blue.svg)](https://hacs.xyz)
-[![Downloads](https://img.shields.io/github/downloads/jan-brinkmann/ha-manual-energy-metering/total?label=downloads)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases)
-
 [![Release](https://img.shields.io/github/v/release/jan-brinkmann/ha-manual-energy-metering?label=release)](https://github.com/jan-brinkmann/ha-manual-energy-metering/releases/latest)
 ![GitHub commits since latest release](https://img.shields.io/github/commits-since/jan-brinkmann/ha-manual-energy-metering/latest)
 [![Commit activity](https://img.shields.io/github/commit-activity/m/jan-brinkmann/ha-manual-energy-metering)](https://github.com/jan-brinkmann/ha-manual-energy-metering/commits/main)
@@ -54,21 +51,26 @@ In a German-language Home Assistant interface, the integration is displayed as
 
 The readings are retained in the `.storage` directory used by Home Assistant.
 
+<!-- ha-marketplace:exclude-start -->
+
 ## Installation
 
-### Preferred: Installation through HACS
+### Marketplace
 
-An existing HACS installation is required. **Manual Energy Metering** is
-included in the default HACS catalog.
+The Marketplace is directly built into Home Assistant. You can
+install **Manual Energy Metering** from the default catalog without a GitHub
+account.
 
-1. Open **HACS** in Home Assistant.
-2. Search for **Manual Energy Metering**.
-3. Open the search result, select **Download**, and install the
-   latest published version.
-4. Fully restart Home Assistant.
-5. Open **Settings > Devices & services > Add integration** and select
-   **Manual Energy Metering**.
-6. Create a separate integration entry for each physical meter.
+[![Open Manual Energy Metering in the Marketplace](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=jan-brinkmann&repository=ha-manual-energy-metering&category=integration)
+
+1. As an administrator, open **Settings > Marketplace** and read and accept the
+   community-content notice when prompted.
+2. Search for **Manual Energy Metering**, open the result, and select
+   **Install**. Confirm the version in the installation dialog.
+3. If Home Assistant requests a restart under **Settings > System > Repairs**,
+   restart before setting up your meters.
+
+[Marketplace documentation](https://www.home-assistant.io/integrations/marketplace/)
 
 ### Alternative: Manual installation from GitHub
 
@@ -83,9 +85,15 @@ included in the default HACS catalog.
    `<configuration_directory>/custom_components/manual_energy_metering/manifest.json`.
    An additional directory level named after the ZIP archive is incorrect here.
 5. Fully restart Home Assistant.
-6. Open **Settings > Devices & services > Add integration** and select
-   **Manual Energy Metering**.
-7. Create a separate integration entry for each physical meter.
+
+<!-- ha-marketplace:exclude-end -->
+
+## Setting up meters
+
+After installation, complete the integration setup if it opens automatically.
+To open it yourself, go to **Settings > Devices & services > Add integration**
+and select **Manual Energy Metering**. Create a separate integration entry for
+each physical meter.
 
 **Manual Energy Metering** then appears as its own card on the
 **Integrations** tab. Clicking the card shows a separate configuration entry for
@@ -93,11 +101,14 @@ each meter that has been created.
 
 ## Updating
 
-### Updating through HACS
+### Updating through the Marketplace (Home Assistant 2026.11 or later)
 
-1. Open **HACS**, then open **Manual Energy Metering**.
-2. Download the new release offered by HACS.
-3. Fully restart Home Assistant when HACS indicates that a restart is pending.
+1. Open **Settings > Marketplace** and accept the community-content notice if
+   prompted.
+2. Open **Settings > Updates**, select **Manual Energy Metering**, and install
+   the offered release.
+3. Fully restart Home Assistant to apply the update. The restart reminder
+   appears under **Settings > System > Repairs**.
 
 ### Manual update
 
@@ -201,8 +212,9 @@ available; otherwise the current time is used. Correct the values if necessary
 and select **Add reading** to save the record. Without a configured provider,
 all manual functions remain available.
 
-After installing or updating the integration, fully restart Home Assistant and
-reload the browser if the card is not shown in the card picker.
+The integration includes the card and registers it automatically. Reload the
+browser if the card is missing from the card picker after setup. After an
+integration update, fully restart Home Assistant first.
 
 ## Timestamps and entity history
 

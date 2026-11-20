@@ -595,7 +595,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
   }
 
   /**
-   * Combine entity attributes with the latest WebSocket result.
+   * Combine entity attributes with the latest WebSocket result in the meter unit.
    *
    * @returns {object} Data required to render the card.
    */
@@ -614,7 +614,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
       meterType: attributes.meter_type,
       visionConfigured: Boolean(attributes.vision_configured),
       compressImage: attributes.vision_compress_image !== false,
-      unit: result.unit ?? attributes.unit_of_measurement ?? "",
+      unit:
+        result.unit ??
+        attributes.meter_unit ??
+        attributes.unit_of_measurement ??
+        "",
       lastReading:
         result.last_reading !== undefined
           ? result.last_reading

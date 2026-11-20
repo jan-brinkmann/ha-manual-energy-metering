@@ -46,7 +46,7 @@ In a German-language Home Assistant interface, the integration is displayed as
 | Meter type | Unit | Example uses
 | --- | --- | --- |
 | Electricity | `Wh` or `kWh` | Main electricity meter for consumption and/or feed-in, PV generation |
-| Gas | `kWh` | Gas heating, district heating station |
+| Gas | `kWh`, `MWh`, `m³`, or `L` | Gas heating, district heating station |
 | Water | `L` | Main water meter, garden water meter |
 
 The readings are retained in the `.storage` directory used by Home Assistant.
@@ -135,11 +135,9 @@ The management page lets you add, edit, delete, and browse the complete reading
 history. Readings can also be added between two existing readings. The
 interpolations are then adjusted accordingly.
 
-Use **Export CSV** on this page to download all recorded meter readings. For an
-electricity meter, choose whether the CSV uses `Wh` or `kWh`. When adding
-another meter, choose **Import an exported CSV file**. The original meter name
-is suggested during import, but you can replace it with any new name and choose
-`Wh` or `kWh` for an imported electricity meter.
+Use **Export CSV** on this page to download all recorded meter readings. When
+adding another meter, choose **Import an exported CSV file**. You can replace
+the suggested meter name during import.
 
 You can also transfer the hourly history of a compatible physical meter from
 one Home Assistant instance to another:
@@ -147,20 +145,45 @@ one Home Assistant instance to another:
 1. On the source instance, open **Settings > Devices & services > Add
    integration > Manual Energy Metering**.
 2. Choose **Export an Energy Dashboard meter**, select its meter and type,
-   choose `Wh` or `kWh` for electricity, and download the CSV file.
+   choose an available CSV unit, and download the file.
 3. On the target instance, add **Manual Energy Metering** again and choose
    **Import an exported CSV file**.
 
-Electricity histories can be exported and imported in `Wh` or `kWh`. Other
-energy histories use `kWh`, and volume histories use `L`. Existing gaps in the
-hourly history remain gaps after import. Negative hourly consumption caused by
-inaccurate source data is exported as `0`; its original value is retained in
-the CSV column `original_change` and listed on the export page.
+CSV import and export can convert electricity readings between `Wh` and `kWh`,
+gas energy readings between `kWh` and `MWh`, and gas volume readings between
+`m³` and `L`. Physical gas histories default to `kWh` for energy and `m³` for
+volume on export. Water histories use `L`. Existing gaps in the hourly history
+remain gaps after import.
+Negative hourly consumption caused by inaccurate source data is exported as
+`0`. Its original value is retained in the CSV column `original_change` and
+listed on the export page.
 
 The actions `manual_energy_metering.add_reading` and
 `manual_energy_metering.delete_reading` are also available under
 **Developer tools > Actions** and can be used in automations. Deleting a
 reading requires its exact stored timestamp.
+
+### Convert gas volume and energy
+
+To calculate energy from a gas meter, multiply the difference between two
+readings by the calorific value and the volume correction factor.
+
+**Energy (kWh) = gas consumption (m³) × calorific value (kWh/m³) × volume correction factor**
+
+The calorific value depends on the gas composition and can change over time.
+The volume correction factor adjusts the measured volume to standard conditions
+using pressure and temperature.
+Use the factors from your gas bill for the relevant period.
+
+Enter both values when setting up a gas meter or later under **Reconfigure**.
+The editable defaults of `11.0 kWh/m³` and `0.95` give an estimate of
+`10.45 kWh` per measured cubic meter. For example, `100 m³` gives `1,045 kWh`
+with those values.
+
+When you choose a CSV unit that converts between volume and energy, a manual
+meter export uses that meter's settings. You can enter the factors during a
+CSV import or an external statistics export. One pair of factors applies to
+the whole CSV. The integration stores readings in the meter's chosen unit.
 
 ## Energy Dashboard
 

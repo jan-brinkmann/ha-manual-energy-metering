@@ -11,6 +11,8 @@ from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers import http
 from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -36,14 +38,17 @@ from .const import (
     DEFAULT_VISION_MODEL,
     DEFAULT_VISION_PROMPT,
     DOMAIN,
-    ELECTRICITY_UNITS,
-    FIXED_UNITS,
-    METER_TYPE_ELECTRICITY,
+    MANUAL_METER_UNITS,
+    METER_TYPE_GAS,
     METER_TYPES,
     UNIT_KWH,
 )
 from .csv_transfer import (
+    CONF_GAS_CALORIFIC_VALUE,
+    CONF_GAS_CORRECTION_FACTOR,
+    DEFAULT_GAS_CONVERSION,
     CsvTransferError,
+    GasConversion,
     STATISTICS_CSV_FORMAT_VERSION,
     convert_meter_csv_unit,
     parse_meter_csv,
@@ -53,6 +58,26 @@ from .panel import async_register_import_ui
 from .vision import VisionError, chat_completions_url, normalize_vision_url
 
 _HEADER_FRONTEND_BASE = "HA-Frontend-Base"
+
+
+def _gas_conversion_fields(defaults: dict[str, Any]) -> dict[vol.Marker, Any]:
+    """Build the editable per-meter gas conversion fields."""
+    return {
+        vol.Required(
+            CONF_GAS_CALORIFIC_VALUE,
+            default=defaults.get(
+                CONF_GAS_CALORIFIC_VALUE, DEFAULT_GAS_CONVERSION.calorific_value
+            ),
+        ): NumberSelector(
+            NumberSelectorConfig(min=0, step="any", unit_of_measurement="kWh/m³")
+        ),
+        vol.Required(
+            CONF_GAS_CORRECTION_FACTOR,
+            default=defaults.get(
+                CONF_GAS_CORRECTION_FACTOR, DEFAULT_GAS_CONVERSION.correction_factor
+            ),
+        ): NumberSelector(NumberSelectorConfig(min=0, step="any")),
+    }
 
 
 def _vision_schema(
@@ -161,9 +186,10 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
             self._import_readings = None
             self._import_statistics = None
             self._meter_data = user_input
-            if user_input[CONF_METER_TYPE] == METER_TYPE_ELECTRICITY:
+            units = MANUAL_METER_UNITS[user_input[CONF_METER_TYPE]]
+            if len(units) > 1:
                 return await self.async_step_unit()
-            self._meter_data[CONF_UNIT] = FIXED_UNITS[user_input[CONF_METER_TYPE]]
+            self._meter_data[CONF_UNIT] = units[0]
             return await self.async_step_vision()
 
         return self.async_show_form(
@@ -185,12 +211,19 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_import_csv(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Import one exported CSV through the authenticated external panel."""
+        """Import a CSV using its chosen unit and any supplied gas factors."""
         if user_input is not None:
             try:
                 imported = parse_meter_csv(user_input[CONF_CSV_CONTENT])
+                gas_conversion = (
+                    GasConversion.from_input(user_input)
+                    if imported.meter_type == METER_TYPE_GAS
+                    else None
+                )
                 imported = convert_meter_csv_unit(
-                    imported, user_input.get(CONF_UNIT, imported.unit)
+                    imported,
+                    user_input.get(CONF_UNIT, imported.unit),
+                    gas_conversion=gas_conversion,
                 )
             except (CsvTransferError, KeyError, TypeError):
                 return await self._async_show_csv_import()
@@ -203,6 +236,8 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_METER_TYPE: imported.meter_type,
                 CONF_UNIT: imported.unit,
             }
+            if gas_conversion is not None:
+                self._meter_data.update(gas_conversion.as_input())
             self._import_readings = [
                 {
                     "timestamp": reading.timestamp.isoformat(),
@@ -265,23 +300,36 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_unit(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Choose Wh or kWh for an electricity meter."""
+        """Choose the new meter's unit and gas conversion factors when applicable."""
+        meter_type = self._meter_data[CONF_METER_TYPE]
+        is_gas = meter_type == METER_TYPE_GAS
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self._meter_data.update(user_input)
-            return await self.async_step_vision()
+            try:
+                if is_gas:
+                    gas_conversion = GasConversion.from_input(user_input)
+                    self._meter_data.update(gas_conversion.as_input())
+            except CsvTransferError as err:
+                errors["base"] = err.code
+            else:
+                self._meter_data[CONF_UNIT] = user_input[CONF_UNIT]
+                return await self.async_step_vision()
 
+        defaults = user_input or {}
+        fields: dict[vol.Marker, Any] = {
+            vol.Required(
+                CONF_UNIT, default=defaults.get(CONF_UNIT, UNIT_KWH)
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=list(MANUAL_METER_UNITS[meter_type]),
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            )
+        }
+        if is_gas:
+            fields.update(_gas_conversion_fields({}))
         return self.async_show_form(
-            step_id="unit",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_UNIT, default=UNIT_KWH): SelectSelector(
-                        SelectSelectorConfig(
-                            options=list(ELECTRICITY_UNITS),
-                            mode=SelectSelectorMode.DROPDOWN,
-                        )
-                    )
-                }
-            ),
+            step_id="unit", data_schema=vol.Schema(fields), errors=errors
         )
 
     async def async_step_vision(
@@ -312,24 +360,33 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Update photo recognition for one meter."""
+        """Update one meter's photo recognition and gas conversion settings."""
         entry = self._get_reconfigure_entry()
+        is_gas = entry.data.get(CONF_METER_TYPE) == METER_TYPE_GAS
         errors: dict[str, str] = {}
         if user_input is not None:
-            vision_data = _normalize_vision_input(user_input)
+            updates = _normalize_vision_input(user_input)
             if user_input.get(CONF_CLEAR_VISION_API_TOKEN, False):
-                vision_data[CONF_VISION_API_TOKEN] = ""
-            elif not vision_data[CONF_VISION_API_TOKEN]:
-                vision_data[CONF_VISION_API_TOKEN] = str(
+                updates[CONF_VISION_API_TOKEN] = ""
+            elif not updates[CONF_VISION_API_TOKEN]:
+                updates[CONF_VISION_API_TOKEN] = str(
                     entry.data.get(CONF_VISION_API_TOKEN, "")
                 )
-            errors = _vision_input_errors(vision_data)
+            errors = _vision_input_errors(updates)
+            if is_gas:
+                try:
+                    gas_conversion = GasConversion.from_input(
+                        {**entry.data, **user_input}
+                    )
+                    updates.update(gas_conversion.as_input())
+                except CsvTransferError as err:
+                    errors["base"] = err.code
             if not errors:
                 await self.async_set_unique_id(entry.unique_id)
                 self._abort_if_unique_id_mismatch()
                 return self.async_update_reload_and_abort(
                     entry,
-                    data_updates={**entry.data, **vision_data},
+                    data_updates={**entry.data, **updates},
                 )
 
         defaults = dict(entry.data)
@@ -340,9 +397,13 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
         defaults.setdefault(CONF_VISION_PROMPT, DEFAULT_VISION_PROMPT)
         if user_input is not None:
             defaults.update(user_input)
+        schema = _vision_schema(defaults, reconfigure=True)
+        if is_gas:
+            gas_defaults = dict(entry.data) if "base" in errors else defaults
+            schema = schema.extend(_gas_conversion_fields(gas_defaults))
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=_vision_schema(defaults, reconfigure=True),
+            data_schema=schema,
             errors=errors,
         )
 

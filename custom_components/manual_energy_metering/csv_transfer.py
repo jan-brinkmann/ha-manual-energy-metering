@@ -1,9 +1,9 @@
-"""Portable CSV import and export for manual meter readings."""
+"""Portable CSV import, unit conversion, and export for meter histories."""
 
 from __future__ import annotations
 
 import csv
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import io
@@ -42,15 +42,22 @@ MAX_CSV_BYTES = 20 * 1024 * 1024
 MAX_CSV_READINGS = 100_000
 MAX_METER_NAME_LENGTH = 255
 ONE_HOUR = timedelta(hours=1)
-ELECTRICITY_CSV_UNITS = ("Wh", "kWh")
+CONF_GAS_CALORIFIC_VALUE = "gas_calorific_value"
+CONF_GAS_CORRECTION_FACTOR = "gas_correction_factor"
 _NUMBER_PATTERN = re.compile(
     r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"
 )
-_ALLOWED_UNITS = {
-    "electricity": frozenset(ELECTRICITY_CSV_UNITS),
-    "gas": frozenset({"kWh", "L"}),
-    "water": frozenset({"L"}),
+# Each group contains a fixed unit or a pair with the 1000-fold larger unit last.
+_UNIT_GROUPS = {
+    "electricity": (("Wh", "kWh"),),
+    "gas": (("kWh", "MWh"), ("L", "m³")),
+    "water": (("L",),),
 }
+_COMPATIBLE_UNITS = {
+    meter_type: {unit: group for group in groups for unit in group}
+    for meter_type, groups in _UNIT_GROUPS.items()
+}
+_GAS_UNIT_SCALES = {"L": 0.001, "m³": 1.0, "kWh": 1.0, "MWh": 1000.0}
 
 
 class CsvTransferError(ValueError):
@@ -60,6 +67,61 @@ class CsvTransferError(ValueError):
         """Initialize an import error with a frontend-localizable code."""
         super().__init__(message)
         self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class GasConversion:
+    """Gas calorific value and volume correction used to convert meter data."""
+
+    calorific_value: float = 11.0
+    correction_factor: float = 0.95
+
+    @property
+    def kwh_per_cubic_meter(self) -> float:
+        """Return the energy per cubic meter measured at the meter."""
+        return self.calorific_value * self.correction_factor
+
+    @classmethod
+    def from_input(cls, values: Mapping[str, Any]) -> GasConversion:
+        """Read factors with defaults and raise CsvTransferError for invalid input."""
+        try:
+            calorific_value = values.get(
+                CONF_GAS_CALORIFIC_VALUE, DEFAULT_GAS_CONVERSION.calorific_value
+            )
+            correction_factor = values.get(
+                CONF_GAS_CORRECTION_FACTOR, DEFAULT_GAS_CONVERSION.correction_factor
+            )
+            if isinstance(calorific_value, bool) or isinstance(
+                correction_factor, bool
+            ):
+                raise ValueError
+            factors = cls(float(calorific_value), float(correction_factor))
+            if all(
+                math.isfinite(value) and value > 0
+                for value in (
+                    factors.calorific_value,
+                    factors.correction_factor,
+                    factors.kwh_per_cubic_meter,
+                )
+            ):
+                return factors
+        except (TypeError, ValueError, OverflowError):
+            pass
+        raise CsvTransferError(
+            "invalid_gas_conversion",
+            "The calorific value, correction factor, and their product must "
+            "be positive and finite.",
+        )
+
+    def as_input(self) -> dict[str, float]:
+        """Return the factor fields used by setup and CSV requests."""
+        return {
+            CONF_GAS_CALORIFIC_VALUE: self.calorific_value,
+            CONF_GAS_CORRECTION_FACTOR: self.correction_factor,
+        }
+
+
+DEFAULT_GAS_CONVERSION = GasConversion()
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,18 +158,29 @@ class MeterCsv:
     excluded_hour_starts: tuple[datetime, ...] = ()
 
 
+def csv_unit_options(
+    meter_type: str, source_unit: str, *, allow_gas_conversion: bool = False
+) -> tuple[str, ...]:
+    """Return the source unit first, with both gas quantities when enabled."""
+    meter_units = _COMPATIBLE_UNITS.get(meter_type, {})
+    units = meter_units.get(source_unit, ())
+    choices = (source_unit, *(unit for unit in units if unit != source_unit))
+    if allow_gas_conversion and meter_type == "gas" and units:
+        return (*choices, *(unit for unit in meter_units if unit not in units))
+    return choices
+
+
 def convert_meter_value(
     value: float,
     meter_type: str,
     source_unit: str,
     target_unit: str,
+    *,
+    gas_conversion: GasConversion | None = None,
 ) -> float:
-    """Convert one meter value between selectable electricity units."""
-    if (
-        meter_type not in _ALLOWED_UNITS
-        or source_unit not in _ALLOWED_UNITS[meter_type]
-        or target_unit not in _ALLOWED_UNITS[meter_type]
-    ):
+    """Convert a value or raise CsvTransferError for invalid values or units."""
+    meter_units = _COMPATIBLE_UNITS.get(meter_type, {})
+    if source_unit not in meter_units or target_unit not in meter_units:
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )
@@ -118,11 +191,25 @@ def convert_meter_value(
         )
     if source_unit == target_unit:
         return numeric_value
-    if meter_type != "electricity":
+    compatible_units = meter_units[source_unit]
+    if target_unit in compatible_units:
+        factor = 1000.0 if source_unit == compatible_units[-1] else 0.001
+    elif gas_conversion is not None and meter_type == "gas":
+        energy_per_volume = gas_conversion.kwh_per_cubic_meter
+        factor = (
+            energy_per_volume
+            if "m³" in compatible_units
+            else 1.0 / energy_per_volume
+        )
+        factor *= _GAS_UNIT_SCALES[source_unit] / _GAS_UNIT_SCALES[target_unit]
+        if not math.isfinite(factor) or factor <= 0:
+            raise CsvTransferError(
+                "invalid_gas_conversion", "The gas conversion factor is out of range."
+            )
+    else:
         raise CsvTransferError(
             "csv_invalid_meter", "This meter unit cannot be converted."
         )
-    factor = 1000.0 if source_unit == "kWh" else 0.001
     converted = numeric_value * factor
     if not math.isfinite(converted):
         raise CsvTransferError(
@@ -136,28 +223,42 @@ def convert_readings_unit(
     meter_type: str,
     source_unit: str,
     target_unit: str,
+    *,
+    gas_conversion: GasConversion | None = None,
 ) -> tuple[CsvReading, ...]:
     """Convert timestamped readings to the requested meter unit."""
     return tuple(
         CsvReading(
             reading.timestamp,
             convert_meter_value(
-                reading.value, meter_type, source_unit, target_unit
+                reading.value,
+                meter_type,
+                source_unit,
+                target_unit,
+                gas_conversion=gas_conversion,
             ),
         )
         for reading in readings
     )
 
 
-def convert_meter_csv_unit(meter: MeterCsv, target_unit: str) -> MeterCsv:
-    """Return an imported meter converted to a selectable electricity unit."""
+def convert_meter_csv_unit(
+    meter: MeterCsv,
+    target_unit: str,
+    *,
+    gas_conversion: GasConversion | None = None,
+) -> MeterCsv:
+    """Convert imported readings and hourly statistics to the selected unit."""
     target_unit = str(target_unit).strip()
-    convert_meter_value(0, meter.meter_type, meter.unit, target_unit)
+    convert_meter_value(
+        0, meter.meter_type, meter.unit, target_unit, gas_conversion=gas_conversion
+    )
     readings = convert_readings_unit(
         meter.readings,
         meter.meter_type,
         meter.unit,
         target_unit,
+        gas_conversion=gas_conversion,
     )
 
     def convert_optional(value: float | None) -> float | None:
@@ -166,7 +267,11 @@ def convert_meter_csv_unit(meter: MeterCsv, target_unit: str) -> MeterCsv:
             None
             if value is None
             else convert_meter_value(
-                value, meter.meter_type, meter.unit, target_unit
+                value,
+                meter.meter_type,
+                meter.unit,
+                target_unit,
+                gas_conversion=gas_conversion,
             )
         )
 
@@ -176,10 +281,18 @@ def convert_meter_csv_unit(meter: MeterCsv, target_unit: str) -> MeterCsv:
             end=item.end,
             state=convert_optional(item.state),
             change=convert_meter_value(
-                item.change, meter.meter_type, meter.unit, target_unit
+                item.change,
+                meter.meter_type,
+                meter.unit,
+                target_unit,
+                gas_conversion=gas_conversion,
             ),
             sum=convert_meter_value(
-                item.sum, meter.meter_type, meter.unit, target_unit
+                item.sum,
+                meter.meter_type,
+                meter.unit,
+                target_unit,
+                gas_conversion=gas_conversion,
             ),
             original_change=convert_optional(item.original_change),
         )
@@ -331,7 +444,7 @@ def _parse_reading_rows(rows: list[list[str]]) -> MeterCsv:
             "csv_unsupported_version", "Unsupported CSV format version."
         )
     name = validate_meter_name(name)
-    if meter_type not in _ALLOWED_UNITS or unit not in _ALLOWED_UNITS[meter_type]:
+    if unit not in _COMPATIBLE_UNITS.get(meter_type, {}):
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )
@@ -438,7 +551,7 @@ def _parse_statistics_rows(
             "csv_unsupported_version", "Unsupported CSV format version."
         )
     name = validate_meter_name(name)
-    if meter_type not in _ALLOWED_UNITS or unit not in _ALLOWED_UNITS[meter_type]:
+    if unit not in _COMPATIBLE_UNITS.get(meter_type, {}):
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )
@@ -521,7 +634,7 @@ def export_meter_csv(
 ) -> str:
     """Serialize all original readings in a stable, spreadsheet-friendly CSV."""
     validated_name = validate_meter_name(name)
-    if meter_type not in _ALLOWED_UNITS or unit not in _ALLOWED_UNITS[meter_type]:
+    if unit not in _COMPATIBLE_UNITS.get(meter_type, {}):
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )
@@ -562,7 +675,7 @@ def export_statistics_csv(
 ) -> str:
     """Serialize hourly long-term statistics without inventing missing hours."""
     validated_name = validate_meter_name(name)
-    if meter_type not in _ALLOWED_UNITS or unit not in _ALLOWED_UNITS[meter_type]:
+    if unit not in _COMPATIBLE_UNITS.get(meter_type, {}):
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )

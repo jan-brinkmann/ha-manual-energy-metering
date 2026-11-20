@@ -20,19 +20,23 @@ from sqlalchemy.orm import aliased
 
 from .const import (
     DOMAIN,
-    ELECTRICITY_UNITS,
     METER_TYPE_ELECTRICITY,
     METER_TYPE_GAS,
     METER_TYPE_WATER,
+    UNIT_CUBIC_METERS,
     UNIT_KWH,
     UNIT_LITERS,
 )
 from .csv_transfer import (
+    DEFAULT_GAS_CONVERSION,
     CsvStatisticsHour,
     CsvTransferError,
+    GasConversion,
     MAX_METER_NAME_LENGTH,
     clamp_negative_statistics_changes,
+    convert_meter_value,
     convert_readings_unit,
+    csv_unit_options,
     export_filename,
     export_meter_csv,
     export_statistics_csv,
@@ -46,12 +50,12 @@ _ENERGY_UNITS = frozenset(str(unit) for unit in UnitOfEnergy)
 _VOLUME_UNITS = frozenset(str(unit) for unit in UnitOfVolume)
 _TARGETS = {
     "energy": {
-        "unit": UNIT_KWH,
-        "meter_types": (METER_TYPE_ELECTRICITY, METER_TYPE_GAS),
+        METER_TYPE_ELECTRICITY: UNIT_KWH,
+        METER_TYPE_GAS: UNIT_KWH,
     },
     "volume": {
-        "unit": UNIT_LITERS,
-        "meter_types": (METER_TYPE_GAS, METER_TYPE_WATER),
+        METER_TYPE_GAS: UNIT_CUBIC_METERS,
+        METER_TYPE_WATER: UNIT_LITERS,
     },
 }
 
@@ -113,24 +117,25 @@ def _loaded_manual_meters(
 
 
 def _manual_meter_item(meter: ManualEnergyMetering) -> dict[str, Any]:
-    """Describe one manual meter using only its entered readings."""
+    """Describe a manual meter's entered readings and compatible CSV units."""
     readings = meter.readings
     first = readings[0] if readings else None
     last = readings[-1] if readings else None
-    unit_class = (
-        "volume"
-        if meter.meter_type == METER_TYPE_WATER
-        or (meter.meter_type == METER_TYPE_GAS and meter.unit == UNIT_LITERS)
-        else "energy"
-    )
     return {
         "statistic_id": meter.statistic_id,
         "name": meter.name,
         "source": DOMAIN,
         "source_unit": meter.unit,
-        "unit_class": unit_class,
+        "unit_class": meter.unit_class,
         "target_unit": meter.unit,
         "meter_types": [meter.meter_type],
+        "available_units": {
+            meter.meter_type: csv_unit_options(
+                meter.meter_type,
+                meter.unit,
+                allow_gas_conversion=meter.gas_conversion is not None,
+            )
+        },
         "known_meter_type": meter.meter_type,
         "export_mode": "readings",
         "first_reading": (
@@ -221,7 +226,7 @@ def _statistics_reading_bounds(
 async def async_list_exportable_statistics(
     hass: HomeAssistant,
 ) -> list[dict[str, Any]]:
-    """List manual meters and compatible statistics available for export."""
+    """List exportable meters with CSV unit choices ordered by preference."""
     metadata_items = await async_list_statistic_ids(
         hass, statistic_type="sum"
     )
@@ -240,7 +245,7 @@ async def async_list_exportable_statistics(
             continue
         if (unit_class := _normalized_unit_class(metadata)) is None:
             continue
-        target = _TARGETS[unit_class]
+        target_units = _TARGETS[unit_class]
         result.append(
             {
                 "statistic_id": statistic_id,
@@ -250,8 +255,18 @@ async def async_list_exportable_statistics(
                     metadata.get("statistics_unit_of_measurement") or ""
                 ),
                 "unit_class": unit_class,
-                "target_unit": target["unit"],
-                "meter_types": list(target["meter_types"]),
+                # Older panels use this single default for the whole unit class.
+                "target_unit": UNIT_KWH if unit_class == "energy" else UNIT_LITERS,
+                "meter_types": list(target_units),
+                "available_units": {
+                    meter_type: csv_unit_options(
+                        meter_type,
+                        unit,
+                        allow_gas_conversion=meter_type == METER_TYPE_GAS,
+                    )
+                    for meter_type, unit in target_units.items()
+                },
+                "gas_conversion": DEFAULT_GAS_CONVERSION.as_input(),
                 "known_meter_type": None,
                 "export_mode": "statistics",
             }
@@ -289,8 +304,10 @@ async def async_export_statistic(
     statistic_id: str,
     meter_type: str,
     requested_unit: str | None = None,
+    *,
+    gas_conversion: GasConversion | None = None,
 ) -> dict[str, Any]:
-    """Export entered readings or the hourly history, depending on the source."""
+    """Export readings or hourly history using the meter's or caller's gas factors."""
     available = {
         item["statistic_id"]: item
         for item in await async_list_exportable_statistics(hass)
@@ -305,14 +322,9 @@ async def async_export_statistic(
             "statistics_invalid_meter_type",
             "The meter type is incompatible with this statistic.",
         )
-    target_unit = str(requested_unit or metadata["target_unit"]).strip()
-    if (
-        meter_type == METER_TYPE_ELECTRICITY
-        and target_unit not in ELECTRICITY_UNITS
-    ) or (
-        meter_type != METER_TYPE_ELECTRICITY
-        and target_unit != metadata["target_unit"]
-    ):
+    available_units = metadata["available_units"][meter_type]
+    target_unit = str(requested_unit or available_units[0]).strip()
+    if target_unit not in available_units:
         raise CsvTransferError(
             "statistics_invalid_unit",
             "The selected export unit is incompatible with this meter.",
@@ -336,6 +348,7 @@ async def async_export_statistic(
                     meter.meter_type,
                     meter.unit,
                     target_unit,
+                    gas_conversion=meter.gas_conversion,
                 ),
             ),
             "unit": target_unit,
@@ -343,6 +356,19 @@ async def async_export_statistic(
         }
 
     unit_class = metadata["unit_class"]
+    default_unit = _TARGETS[unit_class][meter_type]
+    recorder_unit = (
+        target_unit
+        if target_unit in csv_unit_options(meter_type, default_unit)
+        else default_unit
+    )
+    factor = convert_meter_value(
+        1.0,
+        meter_type,
+        recorder_unit,
+        target_unit,
+        gas_conversion=gas_conversion or DEFAULT_GAS_CONVERSION,
+    )
     result = await get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
@@ -350,7 +376,7 @@ async def async_export_statistic(
         None,
         {statistic_id},
         "hour",
-        {unit_class: target_unit},
+        {unit_class: recorder_unit},
         {"change", "state", "sum"},
     )
     rows = result.get(statistic_id, [])
@@ -358,10 +384,10 @@ async def async_export_statistic(
     for row in rows:
         try:
             start = datetime.fromtimestamp(float(row["start"]), timezone.utc)
-            change = float(row["change"])
-            total = float(row["sum"])
+            change = float(row["change"]) * factor
+            total = float(row["sum"]) * factor
             state_value = row.get("state")
-            state = None if state_value is None else float(state_value)
+            state = None if state_value is None else float(state_value) * factor
         except (KeyError, TypeError, ValueError, OverflowError) as err:
             raise CsvTransferError(
                 "statistics_invalid_data",

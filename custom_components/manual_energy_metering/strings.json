@@ -20,16 +20,22 @@
       },
       "import_csv": {
         "title": "Import a meter from CSV",
-        "description": "The import page is part of your own Home Assistant instance. No CSV data is sent to an external website or service. Open the page, select an exported CSV file, confirm the suggested or a new meter name, and choose Wh or kWh for an electricity meter."
+        "description": "The import page is part of your own Home Assistant instance. No CSV data is sent to an external website or service. Open the page, select an exported CSV file, confirm the suggested or a new meter name, and choose a unit if the page offers a choice."
       },
       "export_statistics": {
         "title": "Export an Energy Dashboard meter",
-        "description": "The export page is part of your own Home Assistant instance. No meter data is sent to an external website or service. Open the page, select a compatible meter, and choose Wh or kWh for an electricity meter."
+        "description": "The export page is part of your own Home Assistant instance. No meter data is sent to an external website or service. Open the page, select a compatible meter, and choose a CSV unit if the page offers a choice."
       },
       "unit": {
-        "title": "Choose the electricity unit",
+        "title": "Choose the meter unit",
         "data": {
-          "unit": "Unit"
+          "unit": "Unit",
+          "gas_calorific_value": "Calorific value",
+          "gas_correction_factor": "Volume correction factor"
+        },
+        "data_description": {
+          "gas_calorific_value": "Use the calorific value from the gas bill for CSV conversions between volume and energy.",
+          "gas_correction_factor": "Use the volume correction factor from the gas bill for the relevant period."
         }
       },
       "vision": {
@@ -47,7 +53,7 @@
         }
       },
       "reconfigure": {
-        "title": "Configure photo recognition",
+        "title": "Reconfigure meter",
         "description": "Changes apply only to this meter. Leave the API token empty to retain the stored token, or select Remove stored API token to delete it.",
         "data": {
           "vision_api_url": "Provider address",
@@ -55,19 +61,24 @@
           "vision_model": "Model",
           "vision_prompt": "Prompt",
           "vision_compress_image": "Compress image before recognition",
-          "clear_vision_api_token": "Remove stored API token"
+          "clear_vision_api_token": "Remove stored API token",
+          "gas_calorific_value": "Calorific value",
+          "gas_correction_factor": "Volume correction factor"
         },
         "data_description": {
-          "vision_compress_image": "Enabled: converts the photo to JPEG, limits its longest edge to 1600 pixels and its output size to 2 MiB, and removes embedded metadata. Disabled: sends an original JPEG, PNG, or WebP file unchanged up to 20 MiB, including embedded metadata. Enabled by default."
+          "vision_compress_image": "Enabled: converts the photo to JPEG, limits its longest edge to 1600 pixels and its output size to 2 MiB, and removes embedded metadata. Disabled: sends an original JPEG, PNG, or WebP file unchanged up to 20 MiB, including embedded metadata. Enabled by default.",
+          "gas_calorific_value": "Use the calorific value from the gas bill for CSV conversions between volume and energy.",
+          "gas_correction_factor": "Use the volume correction factor from the gas bill for the relevant period."
         }
       }
     },
     "error": {
       "invalid_url": "Enter a valid HTTP or HTTPS provider address.",
-      "required": "This field is required."
+      "required": "This field is required.",
+      "invalid_gas_conversion": "Enter a positive, finite calorific value and volume correction factor."
     },
     "abort": {
-      "reconfigure_successful": "The photo recognition settings were updated.",
+      "reconfigure_successful": "The meter settings were updated.",
       "statistics_exported": "The meter data was exported."
     }
   },

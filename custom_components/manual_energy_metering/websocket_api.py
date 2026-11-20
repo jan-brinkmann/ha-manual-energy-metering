@@ -22,13 +22,18 @@ from .const import (
     CONF_METER_TYPE,
     CONF_UNIT,
     DOMAIN,
+    METER_TYPE_GAS,
     METER_TYPES,
 )
 from .csv_transfer import (
+    CONF_GAS_CALORIFIC_VALUE,
+    CONF_GAS_CORRECTION_FACTOR,
     CsvStatisticsHour,
     CsvTransferError,
+    GasConversion,
     convert_meter_value,
     convert_readings_unit,
+    csv_unit_options,
     export_filename,
     export_meter_csv,
     export_statistics_csv,
@@ -88,7 +93,7 @@ def _meter_for_message(
 def _meter_payload(
     meter: ManualEnergyMetering, requested_page: int | None = None
 ) -> dict[str, Any]:
-    """Serialize one page of readings and its pagination metadata."""
+    """Serialize one page of readings, pagination, and allowed export units."""
     readings, page, page_count = paginate_readings(
         meter.readings, requested_page
     )
@@ -97,6 +102,11 @@ def _meter_payload(
         CONF_METER_TYPE: meter.meter_type,
         ATTR_STATISTIC_ID: meter.statistic_id,
         "unit": meter.unit,
+        "available_units": csv_unit_options(
+            meter.meter_type,
+            meter.unit,
+            allow_gas_conversion=meter.gas_conversion is not None,
+        ),
         "reading_count": len(meter.readings),
         "page": page,
         "page_count": page_count,
@@ -206,7 +216,7 @@ def websocket_export_readings(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Return every original reading as one portable CSV document."""
+    """Export original readings or imported history in the selected CSV unit."""
     if (meter := _meter_for_message(hass, connection, msg)) is None:
         return
     try:
@@ -216,12 +226,14 @@ def websocket_export_readings(
             meter.meter_type,
             meter.unit,
             target_unit,
+            gas_conversion=meter.gas_conversion,
         )
         converted_readings = convert_readings_unit(
             meter.readings,
             meter.meter_type,
             meter.unit,
             target_unit,
+            gas_conversion=meter.gas_conversion,
         )
         if meter.statistics_import_source:
             excluded = meter.excluded_statistics_hours
@@ -297,6 +309,8 @@ async def websocket_list_export_statistics(
         vol.Required(ATTR_STATISTIC_ID): str,
         vol.Required(CONF_METER_TYPE): vol.In(METER_TYPES),
         vol.Optional(CONF_UNIT): str,
+        vol.Optional(CONF_GAS_CALORIFIC_VALUE): vol.Any(str, int, float),
+        vol.Optional(CONF_GAS_CORRECTION_FACTOR): vol.Any(str, int, float),
     }
 )
 @websocket_api.async_response
@@ -305,13 +319,19 @@ async def websocket_export_statistic(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Return one meter's entered readings or hourly history as CSV."""
+    """Export readings or hourly history with optional factors for external gas."""
     try:
+        gas_conversion = (
+            GasConversion.from_input(msg)
+            if msg[CONF_METER_TYPE] == METER_TYPE_GAS
+            else None
+        )
         exported = await async_export_statistic(
             hass,
             msg[ATTR_STATISTIC_ID],
             msg[CONF_METER_TYPE],
             msg.get(CONF_UNIT),
+            gas_conversion=gas_conversion,
         )
     except CsvTransferError as err:
         connection.send_error(msg["id"], err.code, str(err))

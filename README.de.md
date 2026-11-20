@@ -46,7 +46,7 @@ In einer englischsprachigen Home-Assistant-Oberfläche wird die Integration als
 | Zählertyp | Einheit | Anwendungsbeispiele
 | --- | --- | --- |
 | Strom | `Wh` oder `kWh` | Hauptstromzähler für Bezug und/oder Einspeisung, PV-Erzeugung |
-| Gas | `kWh` | Gasheizung, Fernwärmestation |
+| Gas | `kWh`, `MWh`, `m³` oder `L` | Gasheizung, Fernwärmestation |
 | Wasser | `L` | Hauptwasserzähler, Gartenwasserzähler |
 
 Die Messwerte bleiben im `.storage`-Verzeichnis von Home Assistant erhalten.
@@ -140,11 +140,9 @@ werden, die zwischen zwei vorhandenen Messwerten liegen. Die Interpolationen
 werden anschließend entsprechend angepasst.
 
 Über **CSV exportieren** kannst du dort alle erfassten Zählerstände
-herunterladen. Bei einem Stromzähler kannst du für die CSV zwischen `Wh` und
-`kWh` wählen. Wähle beim Hinzufügen eines weiteren Zählers **Exportierte
-CSV-Datei importieren**. Der ursprüngliche Zählername wird vorgeschlagen, kann
-beim Import aber durch einen beliebigen neuen Namen ersetzt werden. Für einen
-importierten Stromzähler kannst du ebenfalls `Wh` oder `kWh` wählen.
+herunterladen. Wähle beim Hinzufügen eines weiteren Zählers **Exportierte
+CSV-Datei importieren**. Du kannst den vorgeschlagenen Zählernamen beim Import
+ändern.
 
 Du kannst außerdem die Stundenhistorie eines kompatiblen physischen Zählers von
 einer Home-Assistant-Instanz auf eine andere übertragen:
@@ -152,21 +150,48 @@ einer Home-Assistant-Instanz auf eine andere übertragen:
 1. Öffne in der Quellinstanz **Einstellungen > Geräte & Dienste > Integration
    hinzufügen > Manuelle Energiemessung**.
 2. Wähle **Energy-Dashboard-Zähler exportieren**, anschließend den Zähler und
-   Zählertyp, bei Strom `Wh` oder `kWh`, und lade die CSV-Datei herunter.
+   Zählertyp sowie eine der verfügbaren CSV-Einheiten und lade die Datei
+   herunter.
 3. Füge in der Zielinstanz erneut **Manuelle Energiemessung** hinzu und wähle
    **Exportierte CSV-Datei importieren**.
 
-Stromhistorien können in `Wh` oder `kWh` exportiert und importiert werden.
-Andere Energiehistorien verwenden `kWh`, Volumenhistorien `L`. Vorhandene Lücken
-in der Stundenhistorie bleiben nach dem Import erhalten. Negative
-Stundenverbräuche aus fehlerhaften Quelldaten werden als `0` exportiert. Ihr
-ursprünglicher Wert bleibt in der CSV-Spalte `original_change` erhalten und wird
-außerdem auf der Exportseite aufgeführt.
+Beim CSV-Import und -Export kannst du Stromzählerstände zwischen `Wh` und `kWh`,
+Gasenergie zwischen `kWh` und `MWh` und Gasvolumen zwischen `m³` und `L`
+umrechnen. Beim Export der Historie eines physischen Gaszählers sind `kWh` für
+Energie und `m³` für Volumen voreingestellt. Wasserhistorien verwenden `L`.
+Vorhandene Lücken in der Stundenhistorie bleiben nach dem Import erhalten.
+Negative Stundenverbräuche aus fehlerhaften Quelldaten werden als `0`
+exportiert. Ihr ursprünglicher Wert bleibt in der CSV-Spalte `original_change`
+erhalten und wird außerdem auf der Exportseite aufgeführt.
 
 Zusätzlich stehen unter **Entwicklerwerkzeuge > Aktionen** die Aktionen
 `manual_energy_metering.add_reading` und
 `manual_energy_metering.delete_reading` für Automatisierungen zur Verfügung.
 Zum Löschen ist der exakte gespeicherte Zeitstempel erforderlich.
+
+### Gasvolumen und Energie umrechnen
+
+Multipliziere die Differenz zweier Gaszählerstände mit dem Brennwert und der
+Zustandszahl, um die verbrauchte Energie zu berechnen.
+
+**Energie (kWh) = Gasverbrauch (m³) × Brennwert (kWh/m³) × Zustandszahl**
+
+Der Brennwert hängt von der Gaszusammensetzung ab und kann sich mit der Zeit
+ändern. Die Zustandszahl rechnet das gemessene Volumen anhand von Druck und
+Temperatur auf den Normzustand um.
+Verwende die Werte aus der Gasrechnung für den jeweiligen Zeitraum.
+
+Du kannst beide Werte beim Anlegen eines Gaszählers oder später unter
+**Neu konfigurieren** frei eingeben. Die bearbeitbaren Standardwerte von
+`11,0 kWh/m³` und `0,95` ergeben einen Schätzwert von `10,45 kWh` pro
+gemessenem Kubikmeter. Mit diesen Werten ergeben `100 m³` beispielsweise
+`1.045 kWh`.
+
+Wenn du beim CSV-Export eines manuellen Zählers zwischen Gasvolumen und Energie
+umrechnest, gelten die Einstellungen des Zählers. Beim CSV-Import und beim
+Export externer Statistiken kannst du die Faktoren direkt eingeben. Pro CSV
+gilt ein Wertepaar für die gesamte Historie. Die Integration speichert die
+Zählerstände in der gewählten Zählereinheit.
 
 ## Energy Dashboard
 

@@ -2,6 +2,8 @@ const DOMAIN = "manual_energy_metering";
 const STATIC_URL = `/${DOMAIN}_static`;
 const CARD_TAG = "manual-energy-metering-card";
 const EDITOR_TAG = "manual-energy-metering-card-editor";
+const PHOTO_UPLOAD_MODE_CHANGED = `${DOMAIN}:photo-upload-mode-changed`;
+const photoUploadModeFallback = new Map();
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_COMPRESSED_IMAGE_BYTES = 2 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION = 1600;
@@ -66,10 +68,14 @@ const TRANSLATIONS = {
     cameraSecureContextRequired:
       "Direct camera access requires Home Assistant to be opened over HTTPS. The Android camera permission alone is not sufficient.",
     cameraCaptureFailed: "The photograph could not be captured.",
-    photoHint:
-      "The recognized value is shown for confirmation before saving. For uploaded photos, the capture time is used when available; the reading time remains editable.",
+    photoDateOnly: "Date only",
+    photoDateAndReading: "Date and meter reading",
     photoNotConfigured:
-      "Configure photo recognition for this meter to use these buttons.",
+      "Configure a vision provider to enable meter reading recognition.",
+    photoDateApplied:
+      "Capture date and time filled in. Enter the meter reading.",
+    photoDateMissing:
+      "The capture date and time could not be read from the photo. Check the reading date and enter the meter reading.",
     recognizing: "The meter reading is being recognized...",
     recognized: "Reading recognized. Confirm or correct the value, then add it.",
     recognitionStatus: "Recognition progress",
@@ -153,10 +159,13 @@ const TRANSLATIONS = {
     cameraSecureContextRequired:
       "Für den direkten Kamerazugriff muss Home Assistant über HTTPS geöffnet sein. Die Android-Kameraberechtigung allein reicht nicht aus.",
     cameraCaptureFailed: "Das Foto konnte nicht aufgenommen werden.",
-    photoHint:
-      "Der erkannte Wert wird vor dem Speichern zur Bestätigung angezeigt. Bei hochgeladenen Fotos wird, falls vorhanden, der Aufnahmezeitpunkt verwendet und bleibt editierbar.",
+    photoDateOnly: "Nur Datum",
+    photoDateAndReading: "Datum und Zählerstand",
     photoNotConfigured:
-      "Konfiguriere die Fotoerkennung für diesen Zähler, um diese Schaltflächen zu verwenden.",
+      "Richte einen Vision-Provider ein, um Zählerstände aus Fotos zu erkennen.",
+    photoDateApplied: "Aufnahmezeitpunkt übernommen. Trage den Zählerstand ein.",
+    photoDateMissing:
+      "Der Aufnahmezeitpunkt konnte nicht aus dem Foto gelesen werden. Prüfe das Ablesedatum und trage den Zählerstand ein.",
     recognizing: "Der Zählerstand wird erkannt...",
     recognized:
       "Zählerstand erkannt. Bestätige oder korrigiere den Wert und trage ihn anschließend ein.",
@@ -461,15 +470,25 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
   }
 
-  /** Initialize defaults and render when the card enters the document. */
+  /** Subscribe to upload mode changes and render when the card is attached. */
   connectedCallback() {
+    window.addEventListener(
+      PHOTO_UPLOAD_MODE_CHANGED,
+      this._syncPhotoUploadMode
+    );
+    window.addEventListener("storage", this._syncPhotoUploadMode);
     this._ensureTimestamp();
     this._ensurePrefilledValue();
     this._render();
   }
 
-  /** Stop active camera tracks when the card leaves the document. */
+  /** Remove preference listeners and close the camera when detached. */
   disconnectedCallback() {
+    window.removeEventListener(
+      PHOTO_UPLOAD_MODE_CHANGED,
+      this._syncPhotoUploadMode
+    );
+    window.removeEventListener("storage", this._syncPhotoUploadMode);
     this._closeCamera(false);
   }
 
@@ -524,6 +543,70 @@ class ManualEnergyMeteringCard extends HTMLElement {
   get _timeZone() {
     return this._hass?.config?.time_zone || undefined;
   }
+
+  /** @returns {string | undefined} Browser storage key for the selected meter. */
+  get _photoUploadModeKey() {
+    const entityId = this._config?.entity;
+    if (!entityId) {
+      return undefined;
+    }
+    const statisticId =
+      this._hass?.states?.[entityId]?.attributes?.statistic_id;
+    return `${DOMAIN}:photo-upload-mode:${statisticId || entityId}`;
+  }
+
+  /** @returns {boolean} The saved upload preference, with recognition as default. */
+  get _recognizeUploadedReading() {
+    const key = this._photoUploadModeKey;
+    const fallback = photoUploadModeFallback.get(key);
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    try {
+      return !key || window.localStorage.getItem(key) !== "false";
+    } catch (_error) {
+      return true;
+    }
+  }
+
+  /**
+   * Store the meter's upload preference and notify other cards on this page.
+   * Keep the preference in memory if browser storage is unavailable.
+   *
+   * @param {boolean} recognize Whether uploads should recognize the reading.
+   */
+  _savePhotoUploadMode(recognize) {
+    const key = this._photoUploadModeKey;
+    if (!key) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(key, String(recognize));
+      photoUploadModeFallback.delete(key);
+    } catch (_error) {
+      photoUploadModeFallback.set(key, recognize);
+    }
+    window.dispatchEvent(
+      new CustomEvent(PHOTO_UPLOAD_MODE_CHANGED, { detail: key })
+    );
+  }
+
+  /**
+   * Refresh the visible switch when another card or tab changes this meter.
+   *
+   * @param {CustomEvent | StorageEvent} event Upload preference change.
+   */
+  _syncPhotoUploadMode = (event) => {
+    const key = event.type === "storage" ? event.key : event.detail;
+    if (!key || key !== this._photoUploadModeKey) {
+      return;
+    }
+    const toggle = this.shadowRoot.querySelector("#recognize-uploaded-reading");
+    if (toggle) {
+      toggle.checked =
+        this._stateData().visionConfigured && this._recognizeUploadedReading;
+    }
+  };
 
   /** Fill an untouched empty timestamp field with the current local time. */
   _ensureTimestamp() {
@@ -740,7 +823,12 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this.shadowRoot
       .querySelectorAll(".photo-input")
       .forEach((input) =>
-        input.addEventListener("change", (event) => this._recognizePhoto(event))
+        input.addEventListener("change", (event) => this._handlePhotoInput(event))
+      );
+    this.shadowRoot
+      .querySelector("#recognize-uploaded-reading")
+      ?.addEventListener("change", (event) =>
+        this._savePhotoUploadMode(event.target.checked)
       );
     this.shadowRoot
       .querySelector("#take-photo")
@@ -774,7 +862,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
   }
 
   /**
-   * Render camera and upload controls in their current enabled state.
+   * Render the camera button, upload button, and upload mode switch in one row.
    *
    * @param {boolean} hasEntity Whether an entity is configured.
    * @param {boolean} available Whether the entity is available.
@@ -785,13 +873,14 @@ class ManualEnergyMeteringCard extends HTMLElement {
     const disabled =
       !hasEntity ||
       !available ||
-      !visionConfigured ||
       this._busy ||
       this._cameraStarting ||
       this._cameraOpen;
-    const inputAttributes = `class="photo-input" type="file" accept="image/*" ${
-      disabled ? "disabled" : ""
-    }`;
+    const cameraDisabled = disabled || !visionConfigured;
+    const recognizeUploadedReading =
+      visionConfigured && this._recognizeUploadedReading;
+    const inputAttributes = 'class="photo-input" type="file" accept="image/*"';
+    const t = this._t;
     return `
       <section class="photo-capture">
         <div class="photo-buttons">
@@ -799,25 +888,45 @@ class ManualEnergyMeteringCard extends HTMLElement {
             id="take-photo"
             class="photo-button"
             type="button"
-            ${disabled ? "disabled" : ""}
+            ${cameraDisabled ? "disabled" : ""}
           >
             <ha-icon icon="mdi:camera"></ha-icon>
-            <span>${this._escape(this._t.takePhoto)}</span>
+            <span>${this._escape(t.takePhoto)}</span>
           </button>
           <input
             id="camera-input"
             ${inputAttributes}
             capture="environment"
+            ${cameraDisabled ? "disabled" : ""}
           />
           <label class="photo-button ${disabled ? "disabled" : ""}">
-            <input ${inputAttributes} data-read-photo-timestamp="true" />
+            <input
+              ${inputAttributes}
+              data-read-photo-timestamp="true"
+              ${disabled ? "disabled" : ""}
+            />
             <ha-icon icon="mdi:image-plus"></ha-icon>
-            <span>${this._escape(this._t.uploadPhoto)}</span>
+            <span>${this._escape(t.uploadPhoto)}</span>
+          </label>
+          <label class="photo-mode">
+            <span class="photo-date-only">${this._escape(t.photoDateOnly)}</span>
+            <input
+              id="recognize-uploaded-reading"
+              type="checkbox"
+              role="switch"
+              aria-label="${this._escapeAttribute(t.photoDateAndReading)}"
+              ${visionConfigured ? "" : 'aria-describedby="photo-upload-hint"'}
+              ${recognizeUploadedReading ? "checked" : ""}
+              ${cameraDisabled ? "disabled" : ""}
+            />
+            <span>${this._escape(t.photoDateAndReading)}</span>
           </label>
         </div>
-        <p>${this._escape(
-          visionConfigured ? this._t.photoHint : this._t.photoNotConfigured
-        )}</p>
+        ${
+          visionConfigured
+            ? ""
+            : `<p id="photo-upload-hint">${this._escape(t.photoNotConfigured)}</p>`
+        }
       </section>
     `;
   }
@@ -1502,16 +1611,59 @@ class ManualEnergyMeteringCard extends HTMLElement {
   }
 
   /**
-   * Read the selected file from an upload input and start recognition.
+   * Process a selected photograph using the upload mode or camera recognition.
    *
    * @param {Event} event File-input change event.
    */
-  async _recognizePhoto(event) {
+  async _handlePhotoInput(event) {
     const input = event.target;
     const file = input.files?.[0];
     const readPhotoTimestamp = input.dataset.readPhotoTimestamp === "true";
     input.value = "";
-    await this._recognizeFile(file, readPhotoTimestamp);
+    const { visionConfigured } = this._stateData();
+    if (
+      readPhotoTimestamp &&
+      (!visionConfigured || !this._recognizeUploadedReading)
+    ) {
+      await this._applyPhotoTimestamp(file);
+    } else if (visionConfigured) {
+      await this._recognizeFile(file, readPhotoTimestamp);
+    }
+  }
+
+  /**
+   * Read the capture time locally and fill the timestamp field when available.
+   *
+   * @param {File | undefined} file Original uploaded photograph.
+   */
+  async _applyPhotoTimestamp(file) {
+    const entityId = this._config.entity;
+    if (!file || this._busy || !entityId) {
+      return;
+    }
+
+    this._photoPreview = undefined;
+    this._recognitionStage = undefined;
+    this._recognitionFailed = false;
+    this._busy = true;
+    this._message = undefined;
+    this._render();
+    try {
+      const timestamp = await this._readPhotoTimestamp(file);
+      if (this._config.entity !== entityId) {
+        return;
+      }
+      if (timestamp) {
+        this._formTimestamp = timestamp;
+        this._timestampDirty = true;
+        this._message = { text: this._t.photoDateApplied, type: "success" };
+      } else {
+        this._message = { text: this._t.photoDateMissing, type: "info" };
+      }
+    } finally {
+      this._busy = false;
+      this._render();
+    }
   }
 
   /**
@@ -1625,7 +1777,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
         ? this._formatExifDateTime(metadata)
         : undefined;
     } catch (_error) {
-      // Missing or malformed metadata must not prevent photo recognition.
+      // Treat missing or malformed metadata as an absent capture timestamp.
       return undefined;
     }
   }
@@ -2156,15 +2308,19 @@ class ManualEnergyMeteringCard extends HTMLElement {
   }
 
   /**
-   * Store request state and enable or disable interactive controls.
+   * Disable controls during a request and restore their rendered state afterward.
    *
    * @param {boolean} busy Whether an operation is active.
    */
   _setBusy(busy) {
     this._busy = busy;
+    if (!busy) {
+      this._render();
+      return;
+    }
     this.shadowRoot
       .querySelectorAll("button, input")
-      .forEach((element) => (element.disabled = busy));
+      .forEach((element) => (element.disabled = true));
   }
 
   /**
@@ -2367,11 +2523,13 @@ class ManualEnergyMeteringCard extends HTMLElement {
       }
       .summary div:only-child { grid-column: 1 / -1; }
       .photo-capture {
+        container-type: inline-size;
         margin: -2px 0 18px;
       }
       .photo-buttons {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, max-content));
+        align-items: center;
         gap: 10px;
       }
       .photo-button {
@@ -2387,7 +2545,11 @@ class ManualEnergyMeteringCard extends HTMLElement {
         color: var(--primary-text-color);
         background: var(--secondary-background-color);
         font-weight: 650;
+        text-align: center;
         cursor: pointer;
+      }
+      .photo-button span, .photo-mode span {
+        overflow-wrap: anywhere;
       }
       .photo-button:hover:not(.disabled) {
         border-color: var(--primary-color);
@@ -2403,6 +2565,65 @@ class ManualEnergyMeteringCard extends HTMLElement {
         height: 1px;
         opacity: 0;
         pointer-events: none;
+      }
+      .photo-mode {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+      }
+      .photo-mode:has(input:disabled) {
+        cursor: not-allowed;
+      }
+      .photo-mode input {
+        appearance: none;
+        display: inline-grid;
+        place-items: center start;
+        flex: 0 0 auto;
+        width: 36px;
+        height: 22px;
+        margin: 0;
+        padding: 2px;
+        border-radius: 12px;
+        background: var(--secondary-background-color);
+        cursor: inherit;
+      }
+      .photo-mode input::before {
+        content: "";
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--secondary-text-color);
+      }
+      .photo-mode input:checked { background: var(--primary-color); }
+      .photo-mode input:checked::before {
+        justify-self: end;
+        background: var(--text-primary-color, #fff);
+      }
+      .photo-mode input:disabled { opacity: 0.55; }
+      .photo-mode input:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+      }
+      @container (max-width: 520px) {
+        .photo-mode {
+          display: grid;
+          grid-template-areas: "switch" "caption";
+          justify-items: center;
+          gap: 4px;
+          text-align: center;
+        }
+        .photo-mode input { grid-area: switch; }
+        .photo-mode span { grid-area: caption; }
+        .photo-mode:has(input:checked) .photo-date-only,
+        .photo-mode input:not(:checked) + span { visibility: hidden; }
+      }
+      @container (max-width: 380px) {
+        .photo-button {
+          flex-direction: column;
+          gap: 3px;
+          padding: 5px;
+        }
       }
       .camera-overlay {
         position: fixed;
@@ -2661,7 +2882,6 @@ class ManualEnergyMeteringCard extends HTMLElement {
       @media (max-width: 620px) {
         .content { padding: 18px; }
         .summary { column-gap: 12px; }
-        .photo-buttons { display: grid; grid-template-columns: 1fr 1fr; }
         form { grid-template-columns: 1fr; }
         .form-actions { grid-column: auto; justify-items: stretch; }
         .reading-actions {

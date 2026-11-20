@@ -234,18 +234,23 @@ eines benötigt. Modell und Prompt sind vorausgefüllt und können für jeden Z�
 angepasst werden. Auch die Bildkomprimierung lässt sich pro Zähler ein- oder
 ausschalten.
 
-Verwende in der Dashboard-Karte **Foto aufnehmen** oder **Foto hochladen**. Die
-Integration sendet das Bild an den konfigurierten Provider, speichert es aber
-nicht dauerhaft. Für den Provider können eigene Speicher- und Datenschutzregeln
-gelten. Ein kompakter Fortschrittsbalken zeigt den aktuellen Schritt und markiert
-bei einem Fehler den zuletzt erreichten Schritt.
+Wähle für **Foto hochladen** in der Dashboard-Karte zwischen **Nur Datum** und
+**Datum und Zählerstand**. Der Browser merkt sich die Auswahl je Zähler auch
+beim Neuladen der Seite. Bei **Nur Datum** liest der Browser den
+Aufnahmezeitpunkt aus den Fotometadaten. Fehlt diese Angabe, bleibt der bisherige
+Ablesezeitpunkt im Formular stehen. Trage den Zählerstand manuell ein. Ohne
+konfigurierten Provider ist der Schalter ausgegraut und der Upload verwendet
+**Nur Datum**.
 
-Der erkannte Zählerstand und der Ablesezeitpunkt werden zur Bestätigung
-angezeigt. Bei einer hochgeladenen Datei werden, falls vorhanden, Aufnahmedatum
-und -uhrzeit aus den Bildmetadaten verwendet, andernfalls die aktuelle Zeit.
-Korrigiere die Werte bei Bedarf und wähle **Zählerstand eintragen**, um den
-Datensatz zu speichern. Ohne konfigurierten Provider bleiben alle manuellen
-Funktionen verfügbar.
+**Datum und Zählerstand** und **Foto aufnehmen** senden das Bild zur Erkennung
+an den konfigurierten Provider. Die Integration speichert es nicht dauerhaft.
+Für den Provider können eigene Speicher- und Datenschutzregeln gelten. Der
+Fortschrittsbalken zeigt den aktuellen Schritt und markiert bei einem Fehler
+den zuletzt erreichten Schritt. Bei einem Upload verwendet das Formular den
+Aufnahmezeitpunkt, falls er verfügbar ist. Sonst verwendet es die aktuelle Zeit.
+
+Prüfe den Zählerstand und das Ablesedatum und wähle **Zählerstand eintragen**,
+um den Datensatz zu speichern.
 
 Die Integration enthält die Karte und registriert sie automatisch. Lade den
 Browser neu, falls die Karte nach der Einrichtung in der Kartenauswahl fehlt.

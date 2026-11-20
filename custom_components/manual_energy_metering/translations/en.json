@@ -54,7 +54,7 @@
       },
       "reconfigure": {
         "title": "Reconfigure meter",
-        "description": "Changes apply only to this meter. Leave the API token empty to retain the stored token, or select Remove stored API token to delete it.",
+        "description": "Changes apply only to this meter. Leave the provider address empty to disable photo recognition. Leave the API token empty to retain the stored token, or select Remove stored API token to delete it.",
         "data": {
           "vision_api_url": "Provider address",
           "vision_api_token": "API token (optional)",

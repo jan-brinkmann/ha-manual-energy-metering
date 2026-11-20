@@ -85,11 +85,11 @@ def _vision_schema(
     *,
     reconfigure: bool = False,
 ) -> vol.Schema:
-    """Build the per-meter vision-provider form schema."""
+    """Build the per-meter vision form with a clearable address suggestion."""
     fields: dict[vol.Marker, Any] = {
         vol.Optional(
             CONF_VISION_API_URL,
-            default=defaults.get(CONF_VISION_API_URL, ""),
+            description={"suggested_value": defaults.get(CONF_VISION_API_URL, "")},
         ): TextSelector(),
         vol.Optional(
             CONF_VISION_API_TOKEN,
@@ -113,7 +113,12 @@ def _vision_schema(
         ): bool,
     }
     if reconfigure:
-        fields[vol.Optional(CONF_CLEAR_VISION_API_TOKEN, default=False)] = bool
+        fields[
+            vol.Optional(
+                CONF_CLEAR_VISION_API_TOKEN,
+                default=defaults.get(CONF_CLEAR_VISION_API_TOKEN, False),
+            )
+        ] = bool
     return vol.Schema(fields)
 
 
@@ -397,6 +402,8 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
         defaults.setdefault(CONF_VISION_PROMPT, DEFAULT_VISION_PROMPT)
         if user_input is not None:
             defaults.update(user_input)
+            # The form omits the address when the user clears it.
+            defaults[CONF_VISION_API_URL] = user_input.get(CONF_VISION_API_URL, "")
         schema = _vision_schema(defaults, reconfigure=True)
         if is_gas:
             gas_defaults = dict(entry.data) if "base" in errors else defaults

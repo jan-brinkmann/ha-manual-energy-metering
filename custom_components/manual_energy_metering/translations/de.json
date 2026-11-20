@@ -54,7 +54,7 @@
       },
       "reconfigure": {
         "title": "Zähler neu konfigurieren",
-        "description": "Änderungen gelten nur für diesen Zähler. Lasse das API-Token leer, um das gespeicherte Token beizubehalten, oder wähle Gespeichertes API-Token entfernen, um es zu löschen.",
+        "description": "Änderungen gelten nur für diesen Zähler. Lasse die Provider-Adresse leer, um die Fotoerkennung zu deaktivieren. Lasse das API-Token leer, um das gespeicherte Token beizubehalten, oder wähle Gespeichertes API-Token entfernen, um es zu löschen.",
         "data": {
           "vision_api_url": "Provider-Adresse",
           "vision_api_token": "API-Token (optional)",

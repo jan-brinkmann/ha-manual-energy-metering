@@ -198,6 +198,14 @@ retrospectively interpolated data, use the statistic with the
 `manual_energy_metering:` prefix instead of the `sensor.*` statistic that is
 automatically generated from the current sensor state.
 
+On a gas meter's management page, enable **Create an additional Energy
+Dashboard entity** to get a second statistic and its copyable ID. Meters in
+`L` or `m³` get a statistic in `kWh`, and meters in `kWh` or `MWh` get one in
+`L`. The second statistic uses the meter's calorific value and volume
+correction factor. Changes to either factor recalculate its full history.
+Clearing the checkbox deletes the second statistic and its history. Enabling it
+again rebuilds the statistic from the saved readings.
+
 Between two readings, the difference is distributed proportionally to the
 actual elapsed time across hourly intervals. Partial hours receive the
 corresponding proportion of consumption. No consumption is extrapolated before

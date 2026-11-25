@@ -34,7 +34,7 @@
           "gas_correction_factor": "Volume correction factor"
         },
         "data_description": {
-          "gas_calorific_value": "Use the calorific value from the gas bill for CSV conversions between volume and energy.",
+          "gas_calorific_value": "Use the calorific value from the gas bill for conversions between volume and energy.",
           "gas_correction_factor": "Use the volume correction factor from the gas bill for the relevant period."
         }
       },
@@ -67,7 +67,7 @@
         },
         "data_description": {
           "vision_compress_image": "Enabled: converts the photo to JPEG, limits its longest edge to 1600 pixels and its output size to 2 MiB, and removes embedded metadata. Disabled: sends an original JPEG, PNG, or WebP file unchanged up to 20 MiB, including embedded metadata. Enabled by default.",
-          "gas_calorific_value": "Use the calorific value from the gas bill for CSV conversions between volume and energy.",
+          "gas_calorific_value": "Use the calorific value from the gas bill for conversions between volume and energy.",
           "gas_correction_factor": "Use the volume correction factor from the gas bill for the relevant period."
         }
       }
@@ -94,6 +94,9 @@
     },
     "invalid_value": {
       "message": "The reading must be a finite, non-negative number."
+    },
+    "gas_statistics_conversion_failed": {
+      "message": "Gas consumption could not be converted with this meter's calorific value and volume correction factor."
     },
     "non_monotonic": {
       "message": "This reading would make the meter decrease. Correct the adjacent reading first."

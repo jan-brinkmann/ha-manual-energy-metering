@@ -6,7 +6,6 @@ from typing import Any
 from uuid import uuid4
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers import http
@@ -47,13 +46,14 @@ from .csv_transfer import (
     CONF_GAS_CALORIFIC_VALUE,
     CONF_GAS_CORRECTION_FACTOR,
     DEFAULT_GAS_CONVERSION,
+    STATISTICS_CSV_FORMAT_VERSION,
     CsvTransferError,
     GasConversion,
-    STATISTICS_CSV_FORMAT_VERSION,
     convert_meter_csv_unit,
     parse_meter_csv,
     validate_meter_name,
 )
+from .meter import ManualEnergyMetering
 from .panel import async_register_import_ui
 from .vision import VisionError, chat_completions_url, normalize_vision_url
 
@@ -383,9 +383,12 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
                     gas_conversion = GasConversion.from_input(
                         {**entry.data, **user_input}
                     )
+                    meter = getattr(entry, "runtime_data", None)
+                    if isinstance(meter, ManualEnergyMetering):
+                        meter.validate_converted_statistics_factors(gas_conversion)
                     updates.update(gas_conversion.as_input())
-                except CsvTransferError as err:
-                    errors["base"] = err.code
+                except CsvTransferError:
+                    errors["base"] = "invalid_gas_conversion"
             if not errors:
                 await self.async_set_unique_id(entry.unique_id)
                 self._abort_if_unique_id_mismatch()

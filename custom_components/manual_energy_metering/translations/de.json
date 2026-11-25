@@ -34,7 +34,7 @@
           "gas_correction_factor": "Zustandszahl"
         },
         "data_description": {
-          "gas_calorific_value": "Verwende den Brennwert aus der Gasrechnung für die CSV-Umrechnung zwischen Volumen und Energie.",
+          "gas_calorific_value": "Verwende den Brennwert aus der Gasrechnung für die Umrechnung zwischen Volumen und Energie.",
           "gas_correction_factor": "Verwende die Zustandszahl aus der Gasrechnung für den betreffenden Zeitraum."
         }
       },
@@ -67,7 +67,7 @@
         },
         "data_description": {
           "vision_compress_image": "Aktiviert: Konvertiert das Foto in JPEG, begrenzt die längste Kante auf 1600 Pixel und die Ausgabegröße auf 2 MiB und entfernt eingebettete Metadaten. Deaktiviert: Sendet eine JPEG-, PNG- oder WebP-Originaldatei bis 20 MiB unverändert einschließlich eingebetteter Metadaten. Standardmäßig aktiviert.",
-          "gas_calorific_value": "Verwende den Brennwert aus der Gasrechnung für die CSV-Umrechnung zwischen Volumen und Energie.",
+          "gas_calorific_value": "Verwende den Brennwert aus der Gasrechnung für die Umrechnung zwischen Volumen und Energie.",
           "gas_correction_factor": "Verwende die Zustandszahl aus der Gasrechnung für den betreffenden Zeitraum."
         }
       }
@@ -94,6 +94,9 @@
     },
     "invalid_value": {
       "message": "Der Zählerstand muss eine endliche, nicht negative Zahl sein."
+    },
+    "gas_statistics_conversion_failed": {
+      "message": "Der Gasverbrauch konnte mit Brennwert und Zustandszahl dieses Zählers nicht umgerechnet werden."
     },
     "non_monotonic": {
       "message": "Dieser Wert würde den Zähler rückwärts laufen lassen. Korrigiere zuerst den angrenzenden Zählerstand."

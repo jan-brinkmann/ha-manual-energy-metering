@@ -27,6 +27,8 @@ const TRANSLATIONS = {
     description:
       "Add, edit, delete, and browse this meter's readings. Readings can also be entered between two existing readings. After a reading is added, edited, or deleted, the interpolation is adjusted accordingly.",
     energyStatistic: "Entity for the Energy Dashboard:",
+    energyStatisticWithUnit: "Entity for the Energy Dashboard ({unit}):",
+    convertedGasStatistic: "Create an additional Energy Dashboard entity in {unit}",
     newReading: "Add a new meter reading",
     editReading: "Edit meter reading",
     dateTime: "Reading date and time",
@@ -41,6 +43,7 @@ const TRANSLATIONS = {
     inputHint: "Enter without thousands separators.",
     noGrouping: "Enter the meter reading without thousands separators.",
     value: "Meter reading",
+    convertedValue: "Converted value",
     actions: "Actions",
     edit: "Edit",
     delete: "Delete",
@@ -111,6 +114,9 @@ const TRANSLATIONS = {
     errors: {
       entry_not_found: "The selected meter does not exist.",
       entry_not_loaded: "The selected meter is not loaded.",
+      not_gas_meter: "This option is only available for gas meters.",
+      gas_statistics_conversion_failed:
+        "The gas statistics could not be converted with this meter's calorific value and volume correction factor.",
       invalid_timestamp: "Enter a valid date and time.",
       invalid_value: "The reading must be a finite, non-negative number.",
       non_monotonic:
@@ -156,6 +162,8 @@ const TRANSLATIONS = {
     description:
       "Hier kannst du die Zählerstände dieses Zählers eintragen, bearbeiten, löschen und ansehen. Zählerstände können auch zwischen zwei vorhandenen Zählerständen eingetragen werden. Nach dem Eintragen, Bearbeiten oder Löschen eines Zählerstands wird die Interpolation entsprechend angepasst.",
     energyStatistic: "Entität für das Energy Dashboard:",
+    energyStatisticWithUnit: "Entität für das Energy Dashboard ({unit}):",
+    convertedGasStatistic: "Zusätzliche Entität in {unit} für das Energy Dashboard anlegen",
     newReading: "Neuen Zählerstand eintragen",
     editReading: "Zählerstand bearbeiten",
     dateTime: "Ablesedatum und Uhrzeit",
@@ -170,6 +178,7 @@ const TRANSLATIONS = {
     inputHint: "Ohne Tausendertrennzeichen eingeben.",
     noGrouping: "Gib den Zählerstand ohne Tausendertrennzeichen ein.",
     value: "Zählerstand",
+    convertedValue: "Konvertierter Wert",
     actions: "Aktionen",
     edit: "Bearbeiten",
     delete: "Löschen",
@@ -240,6 +249,9 @@ const TRANSLATIONS = {
     errors: {
       entry_not_found: "Der ausgewählte Zähler existiert nicht.",
       entry_not_loaded: "Der ausgewählte Zähler ist nicht geladen.",
+      not_gas_meter: "Diese Option ist nur für Gaszähler verfügbar.",
+      gas_statistics_conversion_failed:
+        "Die Gasstatistik konnte mit Brennwert und Zustandszahl dieses Zählers nicht umgerechnet werden.",
       invalid_timestamp: "Gib ein gültiges Datum und eine gültige Uhrzeit ein.",
       invalid_value:
         "Der Zählerstand muss eine endliche, nicht negative Zahl sein.",
@@ -547,7 +559,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
               <span>${this._escape(title)}</span>${this._renderMeterTypeIcon()}
             </h1>
             <p>${this._escape(t.description)}</p>
-            ${this._renderStatisticId()}
+            ${this._renderStatisticReferences()}
           </div>
         </header>
 
@@ -613,6 +625,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this.shadowRoot
       .querySelector("#export-csv")
       ?.addEventListener("click", () => this._exportCsv());
+    this.shadowRoot
+      .querySelector("#converted-statistics")
+      ?.addEventListener("change", (event) =>
+        this._setConvertedStatistics(event.target.checked)
+      );
     this.shadowRoot
       .querySelector("#readings-export-unit")
       ?.addEventListener("change", (event) => {
@@ -1962,18 +1979,26 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Render the current page of editable meter readings.
+   * Render the current reading page with a display-only gas conversion when active.
    *
    * @param {object[]} readings Reading payloads.
    * @returns {string} Responsive table HTML.
    */
   _renderTable(readings) {
     const t = this._t;
+    const converted = this._data.converted_statistics;
+    const convertedUnit = converted?.statistic_id ? converted.unit : undefined;
     return `
-      <div class="readings-table" role="table">
+      <div class="readings-table${convertedUnit ? " with-converted-values" : ""}"
+        role="table">
         <div class="table-header" role="row">
           <div role="columnheader">${this._escape(t.dateTime)}</div>
           <div role="columnheader">${this._escape(t.value)}</div>
+          ${
+            convertedUnit
+              ? `<div role="columnheader">${this._escape(t.convertedValue)}</div>`
+              : ""
+          }
           <div role="columnheader" class="actions-heading">${this._escape(
             t.actions
           )}</div>
@@ -1988,6 +2013,15 @@ class ManualEnergyMeteringPanel extends HTMLElement {
                 <div class="reading-value" role="cell" data-label="${this._escapeAttribute(
                   t.value
                 )}">${this._escape(this._formatReading(reading.value))}</div>
+                ${
+                  convertedUnit
+                    ? `<div class="reading-value converted-reading-value" role="cell"
+                         data-label="${this._escapeAttribute(t.convertedValue)}"
+                       >${this._escape(
+                         this._formatConvertedReading(reading.converted_value, convertedUnit)
+                       )}</div>`
+                    : ""
+                }
                 <div class="row-actions" role="cell">
                   <button
                     class="action-button edit"
@@ -2118,6 +2152,45 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this._page = page;
     this._setBusy(true);
     await this._load();
+  }
+
+  /**
+   * Save the gas statistics option and refresh the copyable reference.
+   *
+   * @param {boolean} enabled Whether to create the converted statistic.
+   */
+  async _setConvertedStatistics(enabled) {
+    if (this._busy) {
+      return;
+    }
+    const entryId = this._entryId;
+    const timestamp = this.shadowRoot.querySelector("#timestamp");
+    const value = this.shadowRoot.querySelector("#value");
+    if (timestamp && value) {
+      this._formTimestamp = timestamp.value;
+      this._formValue = value.value;
+    }
+    this._setBusy(true);
+    try {
+      const data = await this._call(`${DOMAIN}/statistics/set_converted`, {
+        enabled,
+        page: this._page,
+      });
+      if (entryId === this._entryId) {
+        this._data = data;
+        this._page = data.page;
+        this._busy = false;
+        this._render();
+        this.shadowRoot.querySelector("#converted-statistics")?.focus();
+      }
+    } catch (error) {
+      if (entryId === this._entryId) {
+        this._setBusy(false);
+        const checkbox = this.shadowRoot.querySelector("#converted-statistics");
+        checkbox.checked = Boolean(this._data.converted_statistics.statistic_id);
+        this._showMessage(this._localizedError(error), "error");
+      }
+    }
   }
 
   /**
@@ -2345,6 +2418,24 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
+   * Format a converted register value without exposing floating-point noise.
+   *
+   * @param {number | null | undefined} value Converted value, if available.
+   * @param {string} unit Converted unit.
+   * @returns {string} Localized display value or availability message.
+   */
+  _formatConvertedReading(value, unit) {
+    if (!Number.isFinite(value)) {
+      return this._t.statisticsReadingUnavailable;
+    }
+    const number = new Intl.NumberFormat(this._locale, {
+      maximumSignificantDigits: 15,
+      useGrouping: true,
+    }).format(value);
+    return `${number} ${unit}`;
+  }
+
+  /**
    * Format a number for display with locale-specific grouping.
    *
    * @param {number} value Number to format.
@@ -2436,20 +2527,36 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Render the entity/statistic ID used by the Energy Dashboard.
+   * Render the copyable statistic IDs and the conversion checkbox for gas.
    *
    * @returns {string} Reference HTML or an empty string.
    */
-  _renderStatisticId() {
-    const statisticId = this._data?.statistic_id;
-    if (!statisticId) {
+  _renderStatisticReferences() {
+    if (!this._data?.statistic_id) {
       return "";
     }
+    const converted = this._data.converted_statistics;
+    const label = converted
+      ? this._t.energyStatisticWithUnit.replace("{unit}", this._data.unit)
+      : this._t.energyStatistic;
     return `
       <div class="statistic-reference">
-        <span>${this._escape(this._t.energyStatistic)}</span>
-        <code>${this._escape(statisticId)}</code>
+        <span>${this._escape(label)}</span>
+        <code>${this._escape(this._data.statistic_id)}</code>
       </div>
+      ${converted ? `
+        <label class="converted-statistics-option">
+          <input id="converted-statistics" type="checkbox"
+            ${converted.statistic_id ? "checked" : ""} />
+          ${this._escape(this._t.convertedGasStatistic.replace("{unit}", converted.unit))}
+        </label>
+        ${converted.statistic_id ? `
+          <div class="statistic-reference">
+            <span>${this._escape(this._t.energyStatisticWithUnit.replace("{unit}", converted.unit))}</span>
+            <code>${this._escape(converted.statistic_id)}</code>
+          </div>
+        ` : ""}
+      ` : ""}
     `;
   }
 
@@ -2574,6 +2681,20 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         font: inherit;
         overflow-wrap: anywhere;
         user-select: all;
+      }
+      .converted-statistics-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 14px;
+        cursor: pointer;
+      }
+      .converted-statistics-option input {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        flex: none;
+        accent-color: var(--primary-color);
       }
       .entry-card, .readings-card {
         background: var(--card-background-color);
@@ -2851,10 +2972,17 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         background: color-mix(in srgb, var(--primary-color) 11%, transparent);
         font-weight: 800;
       }
-      .readings-table { border-top: 1px solid var(--divider-color); }
+      .readings-table {
+        --reading-columns: minmax(230px, 1.2fr) minmax(170px, 0.8fr) minmax(230px, auto);
+        border-top: 1px solid var(--divider-color);
+      }
+      .readings-table.with-converted-values {
+        --reading-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr)) 230px;
+        overflow-wrap: anywhere;
+      }
       .table-header, .reading-row {
         display: grid;
-        grid-template-columns: minmax(230px, 1.2fr) minmax(170px, 0.8fr) minmax(230px, auto);
+        grid-template-columns: var(--reading-columns);
         align-items: center;
         column-gap: 18px;
         padding: 14px 24px;
@@ -2934,6 +3062,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
           grid-template-columns: 1fr;
           gap: 12px;
           padding: 18px;
+        }
+        .with-converted-values .reading-row {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .with-converted-values .reading-date,
+        .with-converted-values .row-actions {
+          grid-column: 1 / -1;
         }
         .reading-row:first-child { border-top: 1px solid var(--divider-color); }
         .reading-date::before, .reading-value::before {

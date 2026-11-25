@@ -6,13 +6,13 @@ from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.auth.permissions.const import POLICY_CONTROL
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import Unauthorized
-from homeassistant.helpers import config_validation as cv, entity_registry as er
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     ATTR_STATISTIC_ID,
@@ -51,6 +51,7 @@ WS_UPDATE_READING = f"{DOMAIN}/readings/update"
 WS_DELETE_READING = f"{DOMAIN}/readings/delete"
 WS_CARD_ADD_READING = f"{DOMAIN}/card/add"
 WS_EXPORT_READINGS = f"{DOMAIN}/readings/export"
+WS_SET_CONVERTED_STATISTICS = f"{DOMAIN}/statistics/set_converted"
 WS_LIST_EXPORT_STATISTICS = f"{DOMAIN}/statistics/list"
 WS_EXPORT_STATISTIC = f"{DOMAIN}/statistics/export"
 PAGE_SCHEMA = vol.All(vol.Coerce(int), vol.Range(min=1))
@@ -64,6 +65,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_delete_reading)
     websocket_api.async_register_command(hass, websocket_card_add_reading)
     websocket_api.async_register_command(hass, websocket_export_readings)
+    websocket_api.async_register_command(hass, websocket_set_converted_statistics)
     websocket_api.async_register_command(
         hass, websocket_list_export_statistics
     )
@@ -93,14 +95,47 @@ def _meter_for_message(
 def _meter_payload(
     meter: ManualEnergyMetering, requested_page: int | None = None
 ) -> dict[str, Any]:
-    """Serialize one page of readings, pagination, and allowed export units."""
+    """Serialize one reading page, including converted registers when enabled."""
     readings, page, page_count = paginate_readings(
         meter.readings, requested_page
     )
+    converted_unit = meter.converted_statistics_unit
+    reading_items = []
+    for reading in readings:
+        item: dict[str, str | float | None] = {
+            ATTR_TIMESTAMP: reading.timestamp.isoformat(),
+            ATTR_VALUE: reading.value,
+        }
+        if converted_unit is not None and meter.converted_statistics_enabled:
+            try:
+                item["converted_value"] = convert_meter_value(
+                    reading.value,
+                    meter.meter_type,
+                    meter.unit,
+                    converted_unit,
+                    gas_conversion=meter.gas_conversion,
+                )
+            except CsvTransferError:
+                # Absolute readings can overflow even when their differences fit.
+                item["converted_value"] = None
+        reading_items.append(item)
+
     return {
         "name": meter.name,
         CONF_METER_TYPE: meter.meter_type,
         ATTR_STATISTIC_ID: meter.statistic_id,
+        "converted_statistics": (
+            {
+                "unit": converted_unit,
+                ATTR_STATISTIC_ID: (
+                    meter.converted_statistic_id
+                    if meter.converted_statistics_enabled
+                    else None
+                ),
+            }
+            if converted_unit is not None
+            else None
+        ),
         "unit": meter.unit,
         "available_units": csv_unit_options(
             meter.meter_type,
@@ -111,13 +146,7 @@ def _meter_payload(
         "page": page,
         "page_count": page_count,
         "is_latest_page": page == 1,
-        "readings": [
-            {
-                ATTR_TIMESTAMP: reading.timestamp.isoformat(),
-                ATTR_VALUE: reading.value,
-            }
-            for reading in readings
-        ],
+        "readings": reading_items,
     }
 
 
@@ -200,6 +229,32 @@ def websocket_list_readings(
     connection.send_result(
         msg["id"], _meter_payload(meter, msg.get("page"))
     )
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_SET_CONVERTED_STATISTICS,
+        vol.Required(CONF_CONFIG_ENTRY_ID): str,
+        vol.Required("enabled"): bool,
+        vol.Optional("page"): PAGE_SCHEMA,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_converted_statistics(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Enable or remove a gas meter's converted Energy Dashboard statistic."""
+    if (meter := _meter_for_message(hass, connection, msg)) is None:
+        return
+    try:
+        await meter.async_set_converted_statistics(msg["enabled"])
+    except ReadingError as err:
+        _send_reading_error(connection, msg, err)
+        return
+    connection.send_result(msg["id"], _meter_payload(meter, msg.get("page")))
 
 
 @callback

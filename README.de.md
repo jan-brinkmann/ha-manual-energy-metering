@@ -207,6 +207,15 @@ rückwirkend interpolierten Daten die Statistik mit dem Präfix
 `manual_energy_metering:` und nicht die automatisch vom aktuellen Sensorzustand
 erzeugte Statistik `sensor.*`.
 
+Auf der Verwaltungsseite eines Gaszählers kannst du per Häkchen eine
+**zusätzliche Entität für das Energy Dashboard** anlegen. Bei Zählern in `L`
+oder `m³` entsteht eine kopierbare Statistik-ID für `kWh`, bei Zählern in
+`kWh` oder `MWh` eine für `L`. Die Statistik verwendet Brennwert und
+Zustandszahl des Zählers. Änderst du einen der beiden Werte, wird die gesamte
+umgerechnete Historie neu berechnet. Entfernst du das Häkchen, wird die zweite
+Statistik samt Historie gelöscht. Beim erneuten Aktivieren wird sie aus den
+gespeicherten Zählerständen neu aufgebaut.
+
 Zwischen zwei Ablesungen wird die Differenz proportional zur tatsächlich
 verstrichenen Zeit auf Stundenintervalle verteilt. Angefangene Stunden
 erhalten den entsprechenden Teilverbrauch. Vor der ersten und nach der letzten

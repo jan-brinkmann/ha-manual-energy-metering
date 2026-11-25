@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+import math
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
-import math
+from functools import partial
 from typing import Any
 
 from homeassistant.components.recorder.db_schema import Statistics
@@ -15,7 +16,10 @@ from homeassistant.components.recorder.models import (
     StatisticMeanType,
     StatisticMetaData,
 )
-from homeassistant.components.recorder.statistics import async_add_external_statistics
+from homeassistant.components.recorder.statistics import (
+    async_add_external_statistics,
+    async_list_statistic_ids,
+)
 from homeassistant.components.recorder.tasks import RecorderTask
 from homeassistant.components.recorder.util import get_instance, session_scope
 from homeassistant.config_entries import ConfigEntry
@@ -33,14 +37,17 @@ from .const import (
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
     UNIT_CUBIC_METERS,
+    UNIT_KWH,
     UNIT_LITERS,
 )
-from .csv_transfer import GasConversion
+from .csv_transfer import CsvTransferError, GasConversion, convert_meter_value
 from .interpolation import (
     DuplicateTimestampError,
+    HourlyConsumption,
     HourlyStatisticsUpdate,
     Reading,
     changed_hourly_statistics,
+    hourly_consumption,
     interpolate_value,
     remove_reading,
     replace_reading,
@@ -88,7 +95,7 @@ class ReadingError(ValueError):
 
 
 class ManualEnergyMetering:
-    """Hold one manual meter's readings and imported statistics."""
+    """Hold one manual meter's readings and Energy Dashboard statistics."""
 
     def __init__(
         self, hass: HomeAssistant, entry: ConfigEntry, name: str
@@ -114,11 +121,24 @@ class ManualEnergyMetering:
         self._statistics_baseline: float | None = None
         self._statistics_excluded_hours: set[datetime] = set()
         self._statistics_import_source: str | None = None
+        self.converted_statistics_enabled = False
 
     @property
     def statistic_id(self) -> str:
         """Return the external statistic ID exposed to the Energy Dashboard."""
         return f"{DOMAIN}:{self.meter_id}"
+
+    @property
+    def converted_statistic_id(self) -> str:
+        """Return the stable external statistic ID reserved for converted gas."""
+        return f"{self.statistic_id}_converted"
+
+    @property
+    def converted_statistics_unit(self) -> str | None:
+        """Return the offered unit in the other gas quantity, if applicable."""
+        if self.gas_conversion is None:
+            return None
+        return UNIT_KWH if self.unit_class == "volume" else UNIT_LITERS
 
     @property
     def unit_class(self) -> str:
@@ -172,7 +192,7 @@ class ManualEnergyMetering:
         return remove_listener
 
     async def async_load(self) -> None:
-        """Load readings from Home Assistant storage."""
+        """Load saved readings and rebuild converted history if factors changed."""
         stored = await self._store.async_load()
         if not stored:
             return
@@ -215,6 +235,82 @@ class ManualEnergyMetering:
         source = stored.get("statistics_import_source")
         self._statistics_import_source = (
             source.strip() if isinstance(source, str) and source.strip() else None
+        )
+        if self.gas_conversion is not None and "converted_statistics" in stored:
+            saved_conversion = stored["converted_statistics"]
+            if saved_conversion is None:
+                # Repeat a saved removal if shutdown interrupted the recorder.
+                get_instance(self.hass).async_clear_statistics(
+                    [self.converted_statistic_id]
+                )
+            elif (
+                saved_conversion == self.gas_conversion.as_input()
+                and await async_list_statistic_ids(
+                    self.hass, {self.converted_statistic_id}
+                )
+            ):
+                self.converted_statistics_enabled = True
+            else:
+                await self.async_set_converted_statistics(True)
+
+    async def async_set_converted_statistics(self, enabled: bool) -> None:
+        """Persist the gas option and replace or remove its recorder statistic."""
+        if self.gas_conversion is None:
+            raise ReadingError(
+                "not_gas_meter", "Converted statistics are only available for gas."
+            )
+        async with self._lock:
+            if self.converted_statistics_enabled == enabled:
+                return
+
+            statistics = (
+                await self.hass.async_add_executor_job(self._build_converted_statistics)
+                if enabled
+                else None
+            )
+            await self._async_store_state(
+                self._readings,
+                self._statistics_baseline,
+                self._statistics_excluded_hours,
+                self._statistics_import_source,
+                enabled,
+            )
+            self.converted_statistics_enabled = enabled
+            if statistics is None:
+                get_instance(self.hass).async_clear_statistics(
+                    [self.converted_statistic_id]
+                )
+            else:
+                async_add_external_statistics(
+                    self.hass, self._statistics_metadata(converted=True), statistics
+                )
+
+    async def async_wait_for_pending_writes(self) -> None:
+        """Let in-flight reading and option writes finish before a reload."""
+        async with self._lock:
+            return
+
+    def validate_converted_statistics_factors(self, conversion: GasConversion) -> None:
+        """Raise CsvTransferError if new factors cannot represent the saved history."""
+        unit = self.converted_statistics_unit
+        if not self.converted_statistics_enabled or unit is None:
+            return
+        maximum = 0.0
+        if len(self._readings) >= 2:
+            first = self._readings[0].value
+            last = self._readings[-1].value
+            baseline = self.statistics_baseline
+            maximum = max(last - first, abs(first - baseline), abs(last - baseline))
+        convert_meter_value(
+            maximum, self.meter_type, self.unit, unit, gas_conversion=conversion
+        )
+
+    def _build_converted_statistics(self) -> list[StatisticData]:
+        """Recreate all converted hours from the saved readings and baseline."""
+        return self._converted_statistics_rows(
+            bucket
+            for bucket in hourly_consumption(self._readings, self._statistics_baseline)
+            if bucket.start not in self._statistics_excluded_hours
         )
 
     async def async_add_reading(self, value: Any, timestamp: Any) -> Reading:
@@ -349,7 +445,6 @@ class ManualEnergyMetering:
         old_readings = self._readings
         old_baseline = self._statistics_baseline
         old_excluded_hours = self._statistics_excluded_hours
-        old_import_source = self._statistics_import_source
         baseline = old_baseline
         if len(old_readings) < 2:
             baseline = updated[0].value if updated else None
@@ -380,74 +475,137 @@ class ManualEnergyMetering:
         stored_baseline = baseline
         if len(updated) < 2:
             stored_baseline = updated[0].value if updated else None
+        source = (
+            imported_statistics_source
+            if imported_statistics_source is not None
+            else self._statistics_import_source
+        )
+        converted_statistics = (
+            self._converted_statistics_rows(statistics_update.upsert)
+            if self.converted_statistics_enabled
+            else None
+        )
+        await self._async_store_state(
+            updated,
+            stored_baseline,
+            excluded_hours,
+            source,
+            self.converted_statistics_enabled,
+        )
         self._readings = updated
         self._statistics_baseline = stored_baseline
         self._statistics_excluded_hours = excluded_hours
-        if imported_statistics_source is not None:
-            self._statistics_import_source = imported_statistics_source
-        try:
-            await self._store.async_save(
-                {
-                    "readings": [
-                        {
-                            "timestamp": item.timestamp.isoformat(),
-                            "value": item.value,
-                        }
-                        for item in updated
-                    ],
-                    "statistics_baseline": stored_baseline,
-                    "statistics_excluded_hours": [
-                        item.isoformat() for item in sorted(excluded_hours)
-                    ],
-                    "statistics_import_source": self._statistics_import_source,
-                }
-            )
-        except Exception:
-            self._readings = old_readings
-            self._statistics_baseline = old_baseline
-            self._statistics_excluded_hours = old_excluded_hours
-            self._statistics_import_source = old_import_source
-            raise
+        self._statistics_import_source = source
 
-        self._async_apply_statistics_update(statistics_update)
+        self._async_apply_statistics_update(
+            self._statistics_metadata(),
+            statistics_update.delete_starts,
+            [
+                StatisticData(
+                    start=bucket.start,
+                    state=bucket.consumption,
+                    sum=bucket.cumulative,
+                )
+                for bucket in statistics_update.upsert
+            ],
+        )
+        if converted_statistics is not None:
+            self._async_apply_statistics_update(
+                self._statistics_metadata(converted=True),
+                statistics_update.delete_starts,
+                converted_statistics,
+            )
+
+    async def _async_store_state(
+        self,
+        readings: list[Reading],
+        baseline: float | None,
+        excluded_hours: set[datetime],
+        import_source: str | None,
+        converted_statistics_enabled: bool,
+    ) -> None:
+        """Save the readings, statistics history metadata, and gas option together."""
+        data = {
+            "readings": [
+                {"timestamp": item.timestamp.isoformat(), "value": item.value}
+                for item in readings
+            ],
+            "statistics_baseline": baseline,
+            "statistics_excluded_hours": [
+                item.isoformat() for item in sorted(excluded_hours)
+            ],
+            "statistics_import_source": import_source,
+        }
+        if self.gas_conversion is not None:
+            data["converted_statistics"] = (
+                self.gas_conversion.as_input() if converted_statistics_enabled else None
+            )
+        await self._store.async_save(data)
+
+    def _converted_statistics_rows(
+        self, buckets: Iterable[HourlyConsumption]
+    ) -> list[StatisticData]:
+        """Convert hourly state and sum, raising a user-facing error on overflow."""
+        unit = self.converted_statistics_unit
+        assert unit is not None
+        convert = partial(
+            convert_meter_value,
+            meter_type=self.meter_type,
+            source_unit=self.unit,
+            target_unit=unit,
+            gas_conversion=self.gas_conversion,
+        )
+        try:
+            convert(0.0)
+            return [
+                StatisticData(
+                    start=bucket.start,
+                    state=convert(bucket.consumption),
+                    sum=convert(bucket.cumulative),
+                )
+                for bucket in buckets
+            ]
+        except CsvTransferError as err:
+            raise ReadingError("gas_statistics_conversion_failed", str(err)) from err
 
     @callback
     def _async_apply_statistics_update(
-        self, update: HourlyStatisticsUpdate
+        self,
+        metadata: StatisticMetaData,
+        delete_starts: tuple[datetime, ...],
+        statistics: list[StatisticData],
     ) -> None:
         """Delete and upsert only the statistic rows in an update plan."""
-        if update.delete_starts:
+        if delete_starts:
             get_instance(self.hass).queue_task(
                 _DeleteStatisticsRowsTask(
-                    statistic_id=self.statistic_id,
-                    starts=update.delete_starts,
+                    statistic_id=metadata["statistic_id"],
+                    starts=delete_starts,
                 )
             )
-        if not update.upsert:
-            return
+        if statistics:
+            async_add_external_statistics(self.hass, metadata, statistics)
 
-        statistics = [
-            StatisticData(
-                start=bucket.start,
-                state=bucket.consumption,
-                sum=bucket.cumulative,
-            )
-            for bucket in update.upsert
-        ]
-        async_add_external_statistics(
-            self.hass, self._statistics_metadata(), statistics
-        )
-
-    def _statistics_metadata(self) -> StatisticMetaData:
-        """Return metadata for this meter's external statistic."""
+    def _statistics_metadata(self, *, converted: bool = False) -> StatisticMetaData:
+        """Describe the recorded or converted unit for the Energy Dashboard."""
+        unit = self.unit
+        unit_class = self.unit_class
+        statistic_id = self.statistic_id
+        name = self.name
+        if converted:
+            unit = self.converted_statistics_unit
+            assert unit is not None
+            unit_class = "volume" if unit == UNIT_LITERS else "energy"
+            statistic_id = self.converted_statistic_id
+            name = f"{self.name} ({unit})"
         return StatisticMetaData(
             has_sum=True,
             mean_type=StatisticMeanType.NONE,
-            name=self.name,
+            name=name,
             source=DOMAIN,
-            statistic_id=self.statistic_id,
-            unit_class=self.unit_class,
-            unit_of_measurement=self.unit,
+            statistic_id=statistic_id,
+            unit_class=unit_class,
+            unit_of_measurement=unit,
         )
 
     def _normalize_timestamp(self, value: Any) -> datetime:

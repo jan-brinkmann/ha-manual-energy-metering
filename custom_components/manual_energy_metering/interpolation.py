@@ -7,6 +7,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import math
+from operator import attrgetter
 
 ONE_HOUR = timedelta(hours=1)
 LATEST_READINGS_PAGE_SIZE = 10
@@ -132,18 +133,23 @@ def paginate_readings(
 
 
 def interpolate_value(readings: Iterable[Reading], at: datetime) -> float | None:
-    """Interpolate the meter value at a point in time."""
-    ordered = validate_readings(readings)
-    if not ordered:
-        return None
+    """Validate the readings and interpolate the meter value at a point in time."""
+    return interpolate_ordered_value(validate_readings(readings), at)
 
-    point = _as_utc(at)
-    timestamps = [reading.timestamp for reading in ordered]
-    return _interpolate_ordered(ordered, timestamps, point)
+
+def interpolate_ordered_value(
+    readings: Sequence[Reading], at: datetime
+) -> float | None:
+    """Interpolate a register from readings that are already sorted and validated."""
+    if not readings:
+        return None
+    return _interpolate_ordered(readings, None, _as_utc(at))
 
 
 def _interpolate_ordered(
-    ordered: Sequence[Reading], timestamps: Sequence[datetime], point: datetime
+    ordered: Sequence[Reading],
+    timestamps: Sequence[datetime] | None,
+    point: datetime,
 ) -> float:
     """Interpolate within an already validated reading sequence."""
     if point <= ordered[0].timestamp:
@@ -151,7 +157,11 @@ def _interpolate_ordered(
     if point >= ordered[-1].timestamp:
         return ordered[-1].value
 
-    current_index = bisect_left(timestamps, point)
+    current_index = (
+        bisect_left(ordered, point, key=attrgetter("timestamp"))
+        if timestamps is None
+        else bisect_left(timestamps, point)
+    )
     current = ordered[current_index]
     if current.timestamp == point:
         return current.value

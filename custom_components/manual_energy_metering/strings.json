@@ -27,7 +27,8 @@
         "description": "The export page is part of your own Home Assistant instance. No meter data is sent to an external website or service. Open the page, select a compatible meter, and choose a CSV unit if the page offers a choice."
       },
       "unit": {
-        "title": "Choose the meter unit",
+        "title": "Choose the primary entity's unit",
+        "description": "Choose the unit used by the physical meter. You will enter readings in this unit.",
         "data": {
           "unit": "Unit",
           "gas_calorific_value": "Calorific value",
@@ -97,6 +98,9 @@
     },
     "gas_statistics_conversion_failed": {
       "message": "Gas consumption could not be converted with this meter's calorific value and volume correction factor."
+    },
+    "secondary_statistics_conversion_failed": {
+      "message": "The statistics exceed the numeric range of the selected unit."
     },
     "non_monotonic": {
       "message": "This reading would make the meter decrease. Correct the adjacent reading first."

@@ -2,27 +2,44 @@
 
 from __future__ import annotations
 
+import json
 import unittest
+from datetime import UTC, datetime
 from tempfile import TemporaryDirectory
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 try:
     from homeassistant.config_entries import (
         SOURCE_RECONFIGURE,
+        SOURCE_USER,
         ConfigEntries,
         ConfigEntry,
         ConfigFlowResult,
     )
     from homeassistant.core import HomeAssistant
+    from aiohttp import web
+    from aiohttp.test_utils import make_mocked_request
+    from homeassistant.components.http import KEY_HASS, KEY_HASS_USER
     from homeassistant.helpers.config_validation import custom_serializer
-    from voluptuous_serialize import convert
+    try:
+        from probatio import to_field_list as convert
+    except ModuleNotFoundError:
+        from voluptuous_serialize import convert
 
+    from custom_components.manual_energy_metering import async_setup_entry
+    from custom_components.manual_energy_metering import meter as meter_module
     from custom_components.manual_energy_metering.config_flow import (
         ManualEnergyMeteringConfigFlow,
     )
     from custom_components.manual_energy_metering.const import DOMAIN
+    from custom_components.manual_energy_metering.csv_http import (
+        CSV_IMPORT_URL,
+        CsvImportView,
+    )
+    from custom_components.manual_energy_metering.csv_transfer import export_meter_csv
+    from custom_components.manual_energy_metering.interpolation import Reading
 except ModuleNotFoundError as err:
     if err.name != "homeassistant":
         raise
@@ -36,14 +53,15 @@ def _form_value(form: ConfigFlowResult, name: str) -> Any:
     return field.get("description", {}).get("suggested_value", field.get("default"))
 
 
-class VisionReconfigureTests(unittest.IsolatedAsyncioTestCase):
-    """Verify saving and reopening a meter's photo recognition settings."""
+class MeterConfigFlowTests(unittest.IsolatedAsyncioTestCase):
+    """Verify configuring and importing meters through the real flow manager."""
 
     async def asyncSetUp(self) -> None:
         """Register a meter with the real flow manager and stub platform setup."""
         config_dir = self.enterContext(TemporaryDirectory())
         self.hass = HomeAssistant(config_dir)
         self.entries = self.hass.config_entries = ConfigEntries(self.hass, {})
+        self.hass.data[DOMAIN] = {}
         self.entry = ConfigEntry(
             data={
                 "name": "Electricity",
@@ -132,3 +150,68 @@ class VisionReconfigureTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["reason"], "reconfigure_successful")
         self.assertEqual(self.entry.data["vision_api_url"], "")
         self.assertEqual(self.entry.data["vision_api_token"], "")
+
+    async def test_csv_import_creates_a_separate_meter_in_the_selected_unit(self) -> None:
+        """Convert an exported reading into the new entry's primary unit and store it."""
+        timestamp = datetime(2026, 1, 1, tzinfo=UTC)
+        content = export_meter_csv(
+            "Electricity", "electricity", "kWh", [Reading(timestamp, 2)]
+        )
+
+        async def csv_chunks(_size: int):
+            """Yield the downloaded CSV bytes, including its UTF-8 BOM."""
+            yield content.encode("utf-8")
+
+        with (
+            patch(
+                "homeassistant.config_entries._async_get_flow_handler",
+                return_value=ManualEnergyMeteringConfigFlow,
+            ),
+            patch(
+                "homeassistant.config_entries._support_single_config_entry_only",
+                return_value=False,
+            ),
+            patch.object(
+                ManualEnergyMeteringConfigFlow,
+                "_async_external_panel_url",
+                new_callable=AsyncMock,
+                return_value="https://example.test/import",
+            ),
+            patch.object(self.entries, "async_setup"),
+            patch.object(self.entries, "async_forward_entry_setups"),
+            patch.object(meter_module, "async_add_external_statistics"),
+        ):
+            menu = await self.entries.flow.async_init(
+                DOMAIN, context={"source": SOURCE_USER}
+            )
+            flow_id = menu["flow_id"]
+            external = await self.entries.flow.async_configure(
+                flow_id, {"next_step_id": "import_csv"}
+            )
+            self.assertEqual(external["type"], "external")
+            app = web.Application()
+            app[KEY_HASS] = self.hass
+            request = make_mocked_request(
+                "POST",
+                f"{CSV_IMPORT_URL}?flow_id={flow_id}&name=Electricity+in+MJ&unit=MJ",
+                app=app,
+                payload=SimpleNamespace(iter_chunked=csv_chunks),
+            )
+            request[KEY_HASS_USER] = SimpleNamespace(is_admin=True)
+            accepted = await CsvImportView().post(request)
+            self.assertEqual(accepted.status, 200, accepted.text)
+            self.assertEqual(json.loads(accepted.text)["unit"], "MJ")
+            vision = await self.entries.flow.async_configure(flow_id)
+            self.assertEqual(vision["step_id"], "vision")
+            result = await self.entries.flow.async_configure(flow_id, {})
+            imported_entry = result["result"]
+            self.assertNotEqual(imported_entry.unique_id, self.entry.unique_id)
+            self.assertEqual(self.entry.data["unit"], "kWh")
+            await async_setup_entry(self.hass, imported_entry)
+
+        imported = imported_entry.runtime_data
+        self.assertEqual(imported.unit, "MJ")
+        self.assertEqual(len(imported.readings), 1)
+        self.assertEqual(imported.latest_reading.timestamp, timestamp)
+        self.assertAlmostEqual(imported.latest_reading.value, 7.2)
+        self.assertNotEqual(imported.statistic_id, f"{DOMAIN}:{self.entry.unique_id}")

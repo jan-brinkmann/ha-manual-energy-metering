@@ -40,6 +40,7 @@ from .csv_transfer import (
     export_filename,
     export_meter_csv,
     export_statistics_csv,
+    meter_unit_class,
 )
 from .meter import ManualEnergyMetering
 
@@ -246,6 +247,12 @@ async def async_list_exportable_statistics(
         if (unit_class := _normalized_unit_class(metadata)) is None:
             continue
         target_units = _TARGETS[unit_class]
+        available_units = {
+            meter_type: csv_unit_options(
+                meter_type, unit, allow_gas_conversion=meter_type == METER_TYPE_GAS
+            )
+            for meter_type, unit in target_units.items()
+        }
         result.append(
             {
                 "statistic_id": statistic_id,
@@ -258,15 +265,13 @@ async def async_list_exportable_statistics(
                 # Older panels use this single default for the whole unit class.
                 "target_unit": UNIT_KWH if unit_class == "energy" else UNIT_LITERS,
                 "meter_types": list(target_units),
-                "available_units": {
-                    meter_type: csv_unit_options(
-                        meter_type,
-                        unit,
-                        allow_gas_conversion=meter_type == METER_TYPE_GAS,
-                    )
-                    for meter_type, unit in target_units.items()
-                },
+                "available_units": available_units,
                 "gas_conversion": DEFAULT_GAS_CONVERSION.as_input(),
+                "gas_conversion_units": [
+                    unit
+                    for unit in available_units[METER_TYPE_GAS]
+                    if meter_unit_class(unit) != unit_class
+                ],
                 "known_meter_type": None,
                 "export_mode": "statistics",
             }
@@ -359,7 +364,7 @@ async def async_export_statistic(
     default_unit = _TARGETS[unit_class][meter_type]
     recorder_unit = (
         target_unit
-        if target_unit in csv_unit_options(meter_type, default_unit)
+        if meter_unit_class(target_unit) == unit_class
         else default_unit
     )
     factor = convert_meter_value(

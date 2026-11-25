@@ -34,6 +34,9 @@ In einer englischsprachigen Home-Assistant-Oberfläche wird die Integration als
   vorhandenen historischen Zählerständen.
 - Den Verbrauch linear zu Stundenwerten für das Energy Dashboard von Home
   Assistant interpolieren.
+- Zählerstände in der Einheit des realen Zählers erfassen und den Verbrauch
+  im Energy Dashboard in einer anderen Einheit anzeigen, etwa `m³` bei der
+  Ablesung und `kWh` im Dashboard.
 - Lücken schließen oder über Jahre und Jahrzehnte handschriftlich oder in
   Tabellen geführte Aufzeichnungen übernehmen.
 - Zählerstände über eine kompakte Dashboard-Karte eintragen, optional mit
@@ -43,11 +46,13 @@ In einer englischsprachigen Home-Assistant-Oberfläche wird die Integration als
 
 ## Unterstützte Zähler
 
-| Zählertyp | Einheit | Anwendungsbeispiele
+| Zählertyp | Einheiten | Anwendungsbeispiele
 | --- | --- | --- |
-| Strom | `Wh` oder `kWh` | Hauptstromzähler für Bezug und/oder Einspeisung, PV-Erzeugung |
-| Gas | `kWh`, `MWh`, `m³` oder `L` | Gasheizung, Fernwärmestation |
-| Wasser | `L` | Hauptwasserzähler, Gartenwasserzähler |
+| Strom | `cal`, `Gcal`, `GJ`, `GWh`, `J`, `kcal`, `kJ`, `kWh`, `Mcal`, `MJ`, `mWh`, `MWh`, `thm`, `TWh`, `Wh` | Hauptstromzähler für Bezug und/oder Einspeisung, PV-Erzeugung |
+| Gas | `CCF`, `ft³`, `L`, `MCF`, `m³` sowie alle Stromeinheiten aus der Tabelle | Gasheizung, Fernwärmestation |
+| Wasser | `CCF`, `ft³`, `gal`, `L`, `MCF`, `m³` | Hauptwasserzähler, Gartenwasserzähler |
+
+`gal` bezeichnet US-Gallonen und `thm` US-Therms.
 
 Die Messwerte bleiben im `.storage`-Verzeichnis von Home Assistant erhalten.
 
@@ -139,6 +144,12 @@ und die vollständige Historie ansehen. Es können auch Zählerstände hinzugef�
 werden, die zwischen zwei vorhandenen Messwerten liegen. Die Interpolationen
 werden anschließend entsprechend angepasst.
 
+Beim Anlegen wählst du die Einheit, in der der reale Zähler zählt. In dieser
+Einheit werden alle Zählerstände der primären Entität erfasst. Unter
+**Sekundäre Entitäten** kannst du weitere Einheiten desselben Zählertyps
+anwählen oder abwählen. Jede ausgewählte Einheit erhält einen eigenen Sensor
+und eine Spalte mit den umgerechneten Zählerständen.
+
 Über **CSV exportieren** kannst du dort alle erfassten Zählerstände
 herunterladen. Wähle beim Hinzufügen eines weiteren Zählers **Exportierte
 CSV-Datei importieren**. Du kannst den vorgeschlagenen Zählernamen beim Import
@@ -155,11 +166,13 @@ einer Home-Assistant-Instanz auf eine andere übertragen:
 3. Füge in der Zielinstanz erneut **Manuelle Energiemessung** hinzu und wähle
    **Exportierte CSV-Datei importieren**.
 
-Beim CSV-Import und -Export kannst du Stromzählerstände zwischen `Wh` und `kWh`,
-Gasenergie zwischen `kWh` und `MWh` und Gasvolumen zwischen `m³` und `L`
-umrechnen. Beim Export der Historie eines physischen Gaszählers sind `kWh` für
-Energie und `m³` für Volumen voreingestellt. Wasserhistorien verwenden `L`.
-Vorhandene Lücken in der Stundenhistorie bleiben nach dem Import erhalten.
+Beim CSV-Export und -Import kannst du jede unterstützte Einheit des Zählertyps
+auswählen. Die primäre Einheit wird beim Anlegen festgelegt. Wenn du die CSV
+in einer anderen Einheit importierst, erhältst du einen weiteren, unabhängigen
+Zähler mit dieser primären Einheit. Beim Export der Historie eines physischen
+Gaszählers sind `kWh` für Energie und `m³` für Volumen voreingestellt. Für
+Wasserhistorien ist `L` voreingestellt. Vorhandene Lücken in der Stundenhistorie
+bleiben nach dem Import erhalten.
 Negative Stundenverbräuche aus fehlerhaften Quelldaten werden als `0`
 exportiert. Ihr ursprünglicher Wert bleibt in der CSV-Spalte `original_change`
 erhalten und wird außerdem auf der Exportseite aufgeführt.
@@ -207,19 +220,31 @@ rückwirkend interpolierten Daten die Statistik mit dem Präfix
 `manual_energy_metering:` und nicht die automatisch vom aktuellen Sensorzustand
 erzeugte Statistik `sensor.*`.
 
-Auf der Verwaltungsseite eines Gaszählers kannst du per Häkchen eine
-**zusätzliche Entität für das Energy Dashboard** anlegen. Bei Zählern in `L`
-oder `m³` entsteht eine kopierbare Statistik-ID für `kWh`, bei Zählern in
-`kWh` oder `MWh` eine für `L`. Die Statistik verwendet Brennwert und
-Zustandszahl des Zählers. Änderst du einen der beiden Werte, wird die gesamte
-umgerechnete Historie neu berechnet. Entfernst du das Häkchen, wird die zweite
-Statistik samt Historie gelöscht. Beim erneuten Aktivieren wird sie aus den
-gespeicherten Zählerständen neu aufgebaut.
+Jede sekundäre Entität hat eine eigene, kopierbare Statistik-ID. Die Umrechnung
+zwischen Gasvolumen und Energie verwendet den Brennwert und die Zustandszahl
+des Zählers. Änderst du einen der beiden Werte, wird die betroffene Historie
+neu berechnet.
+Beim Abwählen einer Einheit werden ihr Sensor und die abgeleitete
+Stundenstatistik entfernt. Beim erneuten Aktivieren baut die Integration
+die Statistik aus den gespeicherten Zählerständen auf.
 
 Zwischen zwei Ablesungen wird die Differenz proportional zur tatsächlich
 verstrichenen Zeit auf Stundenintervalle verteilt. Angefangene Stunden
 erhalten den entsprechenden Teilverbrauch. Vor der ersten und nach der letzten
 Ablesung wird kein Verbrauch extrapoliert.
+
+### Beispiel für einen Gaszähler mit Ablesung in m³ und Verbrauch in kWh
+
+1. Lege den Gaszähler mit `m³` als primärer Einheit an und trage die
+   Zählerstände so ein, wie du sie am Gerät abliest, etwa `1200 m³` und bei
+   der nächsten Ablesung `1205 m³`.
+2. Aktiviere auf der Verwaltungsseite unter **Sekundäre Entitäten** die
+   Einheit `kWh`. Die Tabelle zeigt die umgerechneten Werte neben den
+   eingetragenen Zählerständen. Kopiere die Statistik-ID für `kWh`.
+3. Wähle diese Statistik unter **Einstellungen > Dashboards > Energie** beim
+   Gasverbrauch aus. Die Differenz von `5 m³` ergibt mit Brennwert und
+   Zustandszahl aus den obigen Standardeinstellungen einen Energieverbrauch von
+   `52,25 kWh`. Weitere Zählerstände trägst du wie gewohnt in `m³` ein.
 
 ## Dashboard-Karte
 

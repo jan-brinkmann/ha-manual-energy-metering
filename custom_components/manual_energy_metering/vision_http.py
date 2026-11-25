@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import Unauthorized
 from homeassistant.helpers import entity_registry as er
 
-from .const import DOMAIN
+from .const import CONF_METER_ID, DOMAIN
 from .meter import ManualEnergyMetering
 from .vision import (
     ALLOWED_IMAGE_TYPES,
@@ -84,6 +84,12 @@ class VisionRecognitionView(HomeAssistantView):
                 "entry_not_loaded",
                 "The selected meter is not loaded.",
                 HTTPStatus.CONFLICT,
+            )
+        if entity_entry.unique_id != entry.data[CONF_METER_ID]:
+            return _error_response(
+                "entity_not_found",
+                "Select the primary meter entity.",
+                HTTPStatus.NOT_FOUND,
             )
 
         mime_type = request.content_type.lower()

@@ -1,21 +1,28 @@
-"""Regression tests for converted gas statistics and their saved settings."""
+"""Regression tests for secondary meter entities and their saved settings."""
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import unittest
 from datetime import UTC, datetime, timedelta
 from tempfile import TemporaryDirectory
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 try:
+    from homeassistant.config_entries import ConfigEntries, ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers import device_registry, entity_platform, entity_registry
 
     from custom_components.manual_energy_metering import meter as meter_module
+    from custom_components.manual_energy_metering import sensor as sensor_platform
+    from custom_components.manual_energy_metering.const import DOMAIN
     from custom_components.manual_energy_metering.meter import (
         ManualEnergyMetering,
         ReadingError,
     )
+    from custom_components.manual_energy_metering.sensor import ManualEnergyMeteringSensor
     from custom_components.manual_energy_metering.websocket_api import _meter_payload
 except ModuleNotFoundError as err:
     if err.name != "homeassistant":
@@ -184,6 +191,147 @@ class ConvertedGasStatisticsTests(unittest.IsolatedAsyncioTestCase):
         latest, first = _meter_payload(reconfigured)["readings"]
         self.assertAlmostEqual(latest["converted_value"], 86.4)
         self.assertAlmostEqual(first["converted_value"], 48)
+
+    async def test_legacy_gas_selection_keeps_the_existing_statistic_id(self) -> None:
+        """Load the former toggle's storage without replacing its recorder history."""
+        for primary, legacy_unit, legacy_factors in (
+            ("m³", "kWh", {"gas_calorific_value": 11.0, "gas_correction_factor": 0.95}),
+            ("kWh", "L", {"gas_calorific_value": 11.0, "gas_correction_factor": 0.95}),
+            ("L", "kWh", None),
+        ):
+            with self.subTest(primary=primary):
+                meter = self._meter(primary)
+                self.publish.reset_mock()
+                self.recorder.reset_mock()
+                legacy_id = f"manual_energy_metering:{meter.meter_id}_converted"
+                await meter._store.async_save({
+                    "readings": [{"timestamp": self.start.isoformat(), "value": 10}],
+                    "converted_statistics": legacy_factors,
+                })
+                self.list_statistics.return_value = [{"statistic_id": legacy_id}]
+                await meter.async_load()
+                self.publish.assert_not_called()
+                if legacy_factors is None:
+                    self.assertEqual(meter.secondary_units, ())
+                    self.recorder.async_clear_statistics.assert_called_once_with([legacy_id])
+                else:
+                    self.assertEqual(meter.secondary_units, (legacy_unit,))
+                    self.assertEqual(_meter_payload(meter)["secondary_statistics"], {
+                        legacy_unit: legacy_id
+                    })
+                    self.recorder.async_clear_statistics.assert_not_called()
+                stored = await meter._store.async_load()
+                self.assertEqual(stored["secondary_statistics"], {legacy_unit: legacy_factors is not None})
+
+    async def test_multiple_secondary_units_survive_updates_and_reload(self) -> None:
+        """Keep each unit's sensor, table readings, and history independent."""
+        meter = self._meter("kWh", meter_type="electricity")
+        await meter.async_add_reading(10, self.start)
+        await asyncio.gather(
+            meter.async_set_secondary_unit("MWh", True),
+            meter.async_set_secondary_unit("mWh", True),
+        )
+        ids = {unit: meter.secondary_statistic_id(unit) for unit in meter.secondary_units}
+        self.assertEqual(set(ids), {"MWh", "mWh"})
+        self.assertEqual(len(set(ids.values())), 2)
+        self.publish.reset_mock()
+        await meter.async_add_reading(12, self.start + timedelta(hours=1))
+        changes = {
+            call.args[1]["unit_of_measurement"]: call.args[2][0]["state"]
+            for call in self.publish.call_args_list
+        }
+        self.assertEqual(changes, {"kWh": 2.0, "mWh": 2e6, "MWh": 0.002})
+        self.assertEqual(
+            _meter_payload(meter)["readings"][0]["converted_values"],
+            {"mWh": 12e6, "MWh": 0.012},
+        )
+        sensor = ManualEnergyMeteringSensor(meter, "MWh")
+        self.assertEqual(sensor.native_value, 0.012)
+        self.assertEqual(sensor.native_unit_of_measurement, "MWh")
+        self.assertIsNone(sensor.extra_state_attributes)
+
+        await meter.async_set_secondary_unit("mWh", False)
+        self.recorder.async_clear_statistics.assert_called_once_with([ids["mWh"]])
+        self.list_statistics.return_value = [{"statistic_id": ids["MWh"]}]
+        reloaded = self._meter("kWh", meter_type="electricity")
+        await reloaded.async_load()
+        self.assertEqual(reloaded.unit, "kWh")
+        self.assertEqual(reloaded.secondary_units, ("MWh",))
+        self.assertEqual(_meter_payload(reloaded)["secondary_statistics"], {"MWh": ids["MWh"]})
+        self.assertEqual(reloaded.latest_reading.value, 12)
+
+    async def test_reject_primary_and_incompatible_secondary_units(self) -> None:
+        """Keep the primary water unit fixed and reject incompatible units."""
+        meter = self._meter("m³", meter_type="water")
+        for unit in ("m³", "Wh"):
+            with self.subTest(unit=unit), self.assertRaises(ReadingError) as raised:
+                await meter.async_set_secondary_unit(unit, True)
+            self.assertEqual(raised.exception.translation_key, "invalid_secondary_unit")
+        self.assertEqual(meter.secondary_units, ())
+
+    async def test_sensor_platform_adds_and_removes_secondary_entities(self) -> None:
+        """Check selection changes against Home Assistant's entity and device registries."""
+        self.hass.config_entries = entries = ConfigEntries(self.hass, {})
+        await entries.async_initialize()
+        device_registry.async_setup(self.hass)
+        await device_registry.async_load(self.hass, load_empty=True)
+        await entity_registry.async_load(self.hass, load_empty=True)
+        registry = entity_registry.async_get(self.hass)
+        entry = ConfigEntry(
+            data={"meter_type": "gas", "meter_id": "meter", "unit": "CCF"},
+            discovery_keys=MappingProxyType({}),
+            domain=DOMAIN,
+            minor_version=1,
+            options={},
+            source="user",
+            subentries_data=None,
+            title="Gas Meter",
+            unique_id="meter",
+            version=6,
+        )
+        with patch.object(entries, "async_setup"):
+            await entries.async_add(entry)
+        meter = entry.runtime_data = ManualEnergyMetering(self.hass, entry, entry.title)
+        platform = entity_platform.EntityPlatform(
+            hass=self.hass,
+            logger=logging.getLogger(__name__),
+            domain="sensor",
+            platform_name=DOMAIN,
+            platform=sensor_platform,
+            scan_interval=timedelta(seconds=30),
+            entity_namespace=None,
+        )
+        self.addAsyncCleanup(platform.async_reset)
+        with patch.object(entity_platform.PlatformData, "async_load_translations"):
+            self.assertTrue(await platform.async_setup_entry(entry))
+
+        await meter.async_add_reading(1, self.start)
+        await meter.async_set_secondary_unit("kWh", True)
+        await meter.async_set_secondary_unit("m³", True)
+        primary_id = registry.async_get_entity_id("sensor", DOMAIN, meter.meter_id)
+        energy_id = registry.async_get_entity_id(
+            "sensor", DOMAIN, meter.secondary_sensor_id("kWh")
+        )
+        volume_id = registry.async_get_entity_id(
+            "sensor", DOMAIN, meter.secondary_sensor_id("m³")
+        )
+        self.assertEqual(set(platform.entities), {primary_id, energy_id, volume_id})
+        self.assertEqual(registry.async_get(primary_id).device_id, registry.async_get(energy_id).device_id)
+        self.assertEqual(self.hass.states.get(energy_id).attributes["device_class"], "energy")
+        self.assertEqual(self.hass.states.get(volume_id).attributes["device_class"], "gas")
+        self.assertEqual(self.hass.states.get(volume_id).attributes["unit_of_measurement"], "m³")
+        self.assertAlmostEqual(float(self.hass.states.get(volume_id).state), 2.8316846592)
+
+        await meter.async_set_secondary_unit("kWh", False)
+        self.assertIsNone(registry.async_get(energy_id))
+        self.assertIsNone(self.hass.states.get(energy_id))
+        self.assertIsNotNone(self.hass.states.get(volume_id))
+        self.recorder.async_clear_statistics.assert_called_once_with(
+            [f"{DOMAIN}:meter_converted"]
+        )
+
+        await meter.async_set_secondary_unit("kWh", True)
+        self.assertIn(energy_id, platform.entities)
 
     async def test_archive_includes_converted_readings(self) -> None:
         """Convert displayed readings on archived pages as well as the latest page."""

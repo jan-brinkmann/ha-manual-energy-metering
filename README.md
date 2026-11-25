@@ -34,6 +34,9 @@ In a German-language Home Assistant interface, the integration is displayed as
   historical values.
 - Linearly interpolate consumption into hourly values for the Home Assistant
   Energy Dashboard.
+- Enter readings in the physical meter's unit and display consumption in
+  another unit in the Energy Dashboard, such as reading in `m³` and
+  displaying consumption in `kWh`.
 - Close gaps or enter records maintained by hand or in spreadsheets over years
   or decades.
 - Enter readings from a compact dashboard card, optionally with external
@@ -43,11 +46,13 @@ In a German-language Home Assistant interface, the integration is displayed as
 
 ## Supported meters
 
-| Meter type | Unit | Example uses
+| Meter type | Units | Example uses
 | --- | --- | --- |
-| Electricity | `Wh` or `kWh` | Main electricity meter for consumption and/or feed-in, PV generation |
-| Gas | `kWh`, `MWh`, `m³`, or `L` | Gas heating, district heating station |
-| Water | `L` | Main water meter, garden water meter |
+| Electricity | `cal`, `Gcal`, `GJ`, `GWh`, `J`, `kcal`, `kJ`, `kWh`, `Mcal`, `MJ`, `mWh`, `MWh`, `thm`, `TWh`, `Wh` | Main electricity meter for consumption and/or feed-in, PV generation |
+| Gas | `CCF`, `ft³`, `L`, `MCF`, `m³`, plus all the electricity units above | Gas heating, district heating station |
+| Water | `CCF`, `ft³`, `gal`, `L`, `MCF`, `m³` | Main water meter, garden water meter |
+
+`gal` denotes US gallons and `thm` denotes US therms.
 
 The readings are retained in the `.storage` directory used by Home Assistant.
 
@@ -135,6 +140,11 @@ The management page lets you add, edit, delete, and browse the complete reading
 history. Readings can also be added between two existing readings. The
 interpolations are then adjusted accordingly.
 
+When creating a meter, select the unit the physical meter uses. This is the
+primary entity's unit and the unit for entering readings. Under **Secondary
+entities**, select or deselect other units of the meter type. Each selected
+unit has its own sensor and a column of converted readings.
+
 Use **Export CSV** on this page to download all recorded meter readings. When
 adding another meter, choose **Import an exported CSV file**. You can replace
 the suggested meter name during import.
@@ -149,11 +159,12 @@ one Home Assistant instance to another:
 3. On the target instance, add **Manual Energy Metering** again and choose
    **Import an exported CSV file**.
 
-CSV import and export can convert electricity readings between `Wh` and `kWh`,
-gas energy readings between `kWh` and `MWh`, and gas volume readings between
-`m³` and `L`. Physical gas histories default to `kWh` for energy and `m³` for
-volume on export. Water histories use `L`. Existing gaps in the hourly history
-remain gaps after import.
+CSV import and export support every unit listed for the meter type. The
+primary unit is set when the meter is created. Importing the CSV in another
+unit creates a separate, independent meter with that primary unit. Physical gas
+histories default to `kWh` for energy and `m³` for volume on export. Water
+histories default to `L`. Existing gaps in the hourly history remain gaps after
+import.
 Negative hourly consumption caused by inaccurate source data is exported as
 `0`. Its original value is retained in the CSV column `original_change` and
 listed on the export page.
@@ -198,18 +209,29 @@ retrospectively interpolated data, use the statistic with the
 `manual_energy_metering:` prefix instead of the `sensor.*` statistic that is
 automatically generated from the current sensor state.
 
-On a gas meter's management page, enable **Create an additional Energy
-Dashboard entity** to get a second statistic and its copyable ID. Meters in
-`L` or `m³` get a statistic in `kWh`, and meters in `kWh` or `MWh` get one in
-`L`. The second statistic uses the meter's calorific value and volume
-correction factor. Changes to either factor recalculate its full history.
-Clearing the checkbox deletes the second statistic and its history. Enabling it
-again rebuilds the statistic from the saved readings.
+Each secondary entity has a copyable statistic ID. Conversion between gas
+volume and energy uses the meter's calorific value and volume correction factor.
+Changes to either factor recalculate the affected history. Clearing a unit's
+checkbox removes its sensor and derived hourly statistic. Enabling it again
+rebuilds the statistic from the stored readings.
 
 Between two readings, the difference is distributed proportionally to the
 actual elapsed time across hourly intervals. Partial hours receive the
 corresponding proportion of consumption. No consumption is extrapolated before
 the first or after the last reading.
+
+### Example with gas readings in m³ and consumption in kWh
+
+1. Create the gas meter with `m³` as its primary unit and enter the values
+   shown on the physical meter, such as `1200 m³` and `1205 m³` on
+   successive readings.
+2. On the meter's management page, enable `kWh` under **Secondary entities**.
+   The table shows converted values alongside the entered readings. Copy the
+   statistic ID for `kWh`.
+3. Select that statistic for gas consumption under **Settings > Dashboards >
+   Energy**. With the default calorific value and volume correction factor
+   described above, the difference of `5 m³` represents `52.25 kWh` of
+   consumption. Continue entering readings in `m³`.
 
 ## Dashboard card
 

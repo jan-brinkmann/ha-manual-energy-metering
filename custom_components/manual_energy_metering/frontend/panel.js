@@ -2,7 +2,6 @@ const DOMAIN = "manual_energy_metering";
 const STATIC_URL = `/${DOMAIN}_static`;
 const MAX_CSV_BYTES = 20 * 1024 * 1024;
 const STATISTICS_PAGE_SIZE = 100;
-const GAS_ENERGY_UNITS = ["kWh", "MWh"];
 
 const METER_ICONS = {
   electricity: "electricity.png",
@@ -26,9 +25,9 @@ const TRANSLATIONS = {
     fallbackTitle: "Meter readings",
     description:
       "Add, edit, delete, and browse this meter's readings. Readings can also be entered between two existing readings. After a reading is added, edited, or deleted, the interpolation is adjusted accordingly.",
-    energyStatistic: "Entity for the Energy Dashboard:",
-    energyStatisticWithUnit: "Entity for the Energy Dashboard ({unit}):",
-    convertedGasStatistic: "Create an additional Energy Dashboard entity in {unit}",
+    primaryEntity: "Primary entity ({unit})",
+    secondaryEntities: "Secondary entities",
+    energyStatistic: "Energy Dashboard statistic",
     newReading: "Add a new meter reading",
     editReading: "Edit meter reading",
     dateTime: "Reading date and time",
@@ -43,7 +42,7 @@ const TRANSLATIONS = {
     inputHint: "Enter without thousands separators.",
     noGrouping: "Enter the meter reading without thousands separators.",
     value: "Meter reading",
-    convertedValue: "Converted value",
+    convertedValue: "Converted to {unit}",
     actions: "Actions",
     edit: "Edit",
     delete: "Delete",
@@ -88,7 +87,7 @@ const TRANSLATIONS = {
       "Select a CSV file exported by Manual Energy Metering. The original name is suggested and can be replaced.",
     csvFile: "CSV file",
     importedMeterName: "Name of the new meter",
-    importedMeterUnit: "Unit of the imported meter",
+    importedMeterUnit: "Primary unit of the new meter",
     importedMeterDetails: "{count} readings · {type} · {unit}",
     importedStatisticsDetails: "{count} hourly values · {type} · {unit}",
     importMeter: "Continue with this meter",
@@ -115,6 +114,9 @@ const TRANSLATIONS = {
       entry_not_found: "The selected meter does not exist.",
       entry_not_loaded: "The selected meter is not loaded.",
       not_gas_meter: "This option is only available for gas meters.",
+      invalid_secondary_unit: "Choose a different unit supported by this meter.",
+      secondary_statistics_conversion_failed:
+        "The statistics exceed the numeric range of the selected unit.",
       gas_statistics_conversion_failed:
         "The gas statistics could not be converted with this meter's calorific value and volume correction factor.",
       invalid_timestamp: "Enter a valid date and time.",
@@ -161,9 +163,9 @@ const TRANSLATIONS = {
     fallbackTitle: "Zählerstände",
     description:
       "Hier kannst du die Zählerstände dieses Zählers eintragen, bearbeiten, löschen und ansehen. Zählerstände können auch zwischen zwei vorhandenen Zählerständen eingetragen werden. Nach dem Eintragen, Bearbeiten oder Löschen eines Zählerstands wird die Interpolation entsprechend angepasst.",
-    energyStatistic: "Entität für das Energy Dashboard:",
-    energyStatisticWithUnit: "Entität für das Energy Dashboard ({unit}):",
-    convertedGasStatistic: "Zusätzliche Entität in {unit} für das Energy Dashboard anlegen",
+    primaryEntity: "Primäre Entität ({unit})",
+    secondaryEntities: "Sekundäre Entitäten",
+    energyStatistic: "Statistik für das Energy Dashboard",
     newReading: "Neuen Zählerstand eintragen",
     editReading: "Zählerstand bearbeiten",
     dateTime: "Ablesedatum und Uhrzeit",
@@ -178,7 +180,7 @@ const TRANSLATIONS = {
     inputHint: "Ohne Tausendertrennzeichen eingeben.",
     noGrouping: "Gib den Zählerstand ohne Tausendertrennzeichen ein.",
     value: "Zählerstand",
-    convertedValue: "Konvertierter Wert",
+    convertedValue: "Umrechnung in {unit}",
     actions: "Aktionen",
     edit: "Bearbeiten",
     delete: "Löschen",
@@ -223,7 +225,7 @@ const TRANSLATIONS = {
       "Wähle eine von der Manuellen Energiemessung exportierte CSV-Datei. Der ursprüngliche Name wird vorgeschlagen und kann ersetzt werden.",
     csvFile: "CSV-Datei",
     importedMeterName: "Name des neuen Zählers",
-    importedMeterUnit: "Einheit des importierten Zählers",
+    importedMeterUnit: "Primäre Einheit des neuen Zählers",
     importedMeterDetails: "{count} Zählerstände · {type} · {unit}",
     importedStatisticsDetails: "{count} Stundenwerte · {type} · {unit}",
     importMeter: "Mit diesem Zähler fortfahren",
@@ -250,6 +252,9 @@ const TRANSLATIONS = {
       entry_not_found: "Der ausgewählte Zähler existiert nicht.",
       entry_not_loaded: "Der ausgewählte Zähler ist nicht geladen.",
       not_gas_meter: "Diese Option ist nur für Gaszähler verfügbar.",
+      invalid_secondary_unit: "Wähle eine andere Einheit, die dieser Zähler unterstützt.",
+      secondary_statistics_conversion_failed:
+        "Die Statistikwerte sind für die gewählte Einheit zu groß.",
       gas_statistics_conversion_failed:
         "Die Gasstatistik konnte mit Brennwert und Zustandszahl dieses Zählers nicht umgerechnet werden.",
       invalid_timestamp: "Gib ein gültiges Datum und eine gültige Uhrzeit ein.",
@@ -625,11 +630,11 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     this.shadowRoot
       .querySelector("#export-csv")
       ?.addEventListener("click", () => this._exportCsv());
-    this.shadowRoot
-      .querySelector("#converted-statistics")
-      ?.addEventListener("change", (event) =>
-        this._setConvertedStatistics(event.target.checked)
-      );
+    this.shadowRoot.querySelectorAll("[data-secondary-unit]").forEach((checkbox) =>
+      checkbox.addEventListener("change", () =>
+        this._setSecondaryUnit(checkbox)
+      )
+    );
     this.shadowRoot
       .querySelector("#readings-export-unit")
       ?.addEventListener("change", (event) => {
@@ -679,13 +684,10 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     );
     const exportUnits =
       selected?.available_units?.[this._selectedMeterType] || [];
-    const targetClass = GAS_ENERGY_UNITS.includes(this._selectedExportUnit)
-      ? "energy"
-      : "volume";
     const showGasConversion =
       selected?.gas_conversion &&
       this._selectedMeterType === "gas" &&
-      selected.unit_class !== targetClass;
+      selected.gas_conversion_units?.includes(this._selectedExportUnit);
     const conversion = selected
       ? t.statisticsUnitConversion
           .replace("{source}", selected.source_unit || "-")
@@ -963,9 +965,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     if (!reading?.timestamp || !Number.isFinite(value)) {
       return this._t.statisticsReadingUnavailable;
     }
-    const formattedValue = `${this._formatNumber(value)}${
-      unit ? ` ${unit}` : ""
-    }`;
+    const formattedValue = this._formatReading(value, unit);
     return `${formattedValue} · ${this._formatDate(reading.timestamp)}`;
   }
 
@@ -1497,10 +1497,10 @@ class ManualEnergyMeteringPanel extends HTMLElement {
    * @returns {string} Localized interval and original value.
    */
   _formatStatisticsCorrection(item) {
-    const unit = this._exportUnit ? ` ${this._exportUnit}` : "";
-    return `${this._formatStatisticsHour(item.start)}: ${this._formatNumber(
-      item.value
-    )}${unit}`;
+    return `${this._formatStatisticsHour(item.start)}: ${this._formatReading(
+      item.value,
+      this._exportUnit
+    )}`;
   }
 
   /** Render CSV inspection, meter settings, and gas factors for import. */
@@ -1979,26 +1979,26 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Render the current reading page with a display-only gas conversion when active.
+   * Render the current reading page in the primary and selected secondary units.
    *
    * @param {object[]} readings Reading payloads.
    * @returns {string} Responsive table HTML.
    */
   _renderTable(readings) {
     const t = this._t;
-    const converted = this._data.converted_statistics;
-    const convertedUnit = converted?.statistic_id ? converted.unit : undefined;
+    const secondaryUnits = Object.keys(this._data.secondary_statistics || {});
+    const primaryLabel = `${t.value} (${this._data.unit})`;
     return `
-      <div class="readings-table${convertedUnit ? " with-converted-values" : ""}"
-        role="table">
+      <div class="readings-table${secondaryUnits.length ? " with-converted-values" : ""}"
+        style="--secondary-column-count: ${secondaryUnits.length}" role="table">
         <div class="table-header" role="row">
           <div role="columnheader">${this._escape(t.dateTime)}</div>
-          <div role="columnheader">${this._escape(t.value)}</div>
-          ${
-            convertedUnit
-              ? `<div role="columnheader">${this._escape(t.convertedValue)}</div>`
-              : ""
-          }
+          <div role="columnheader" class="reading-unit">${this._escape(primaryLabel)}</div>
+          ${secondaryUnits.map((unit) =>
+            `<div role="columnheader" class="reading-unit">${this._escape(
+              t.convertedValue.replace("{unit}", unit)
+            )}</div>`
+          ).join("")}
           <div role="columnheader" class="actions-heading">${this._escape(
             t.actions
           )}</div>
@@ -2011,17 +2011,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
                   t.dateTime
                 )}">${this._escape(this._formatDate(reading.timestamp))}</div>
                 <div class="reading-value" role="cell" data-label="${this._escapeAttribute(
-                  t.value
+                  primaryLabel
                 )}">${this._escape(this._formatReading(reading.value))}</div>
-                ${
-                  convertedUnit
-                    ? `<div class="reading-value converted-reading-value" role="cell"
-                         data-label="${this._escapeAttribute(t.convertedValue)}"
-                       >${this._escape(
-                         this._formatConvertedReading(reading.converted_value, convertedUnit)
-                       )}</div>`
-                    : ""
-                }
+                ${secondaryUnits.map((unit) =>
+                  `<div class="reading-value" role="cell"
+                    data-label="${this._escapeAttribute(t.convertedValue.replace("{unit}", unit))}"
+                  >${this._escape(this._formatConvertedReading(reading.converted_values?.[unit], unit))}</div>`
+                ).join("")}
                 <div class="row-actions" role="cell">
                   <button
                     class="action-button edit"
@@ -2155,14 +2151,16 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Save the gas statistics option and refresh the copyable reference.
+   * Save a secondary unit selection and refresh the references and reading table.
    *
-   * @param {boolean} enabled Whether to create the converted statistic.
+   * @param {HTMLInputElement} checkbox The changed unit selection.
    */
-  async _setConvertedStatistics(enabled) {
+  async _setSecondaryUnit(checkbox) {
     if (this._busy) {
       return;
     }
+    const unit = checkbox.dataset.secondaryUnit;
+    const enabled = checkbox.checked;
     const entryId = this._entryId;
     const timestamp = this.shadowRoot.querySelector("#timestamp");
     const value = this.shadowRoot.querySelector("#value");
@@ -2172,7 +2170,8 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     }
     this._setBusy(true);
     try {
-      const data = await this._call(`${DOMAIN}/statistics/set_converted`, {
+      const data = await this._call(`${DOMAIN}/statistics/set_secondary_unit`, {
+        unit,
         enabled,
         page: this._page,
       });
@@ -2181,13 +2180,13 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         this._page = data.page;
         this._busy = false;
         this._render();
-        this.shadowRoot.querySelector("#converted-statistics")?.focus();
+        Array.from(this.shadowRoot.querySelectorAll("[data-secondary-unit]"))
+          .find((input) => input.dataset.secondaryUnit === unit)?.focus();
       }
     } catch (error) {
       if (entryId === this._entryId) {
         this._setBusy(false);
-        const checkbox = this.shadowRoot.querySelector("#converted-statistics");
-        checkbox.checked = Boolean(this._data.converted_statistics.statistic_id);
+        checkbox.checked = Boolean(this._data.secondary_statistics?.[unit]);
         this._showMessage(this._localizedError(error), "error");
       }
     }
@@ -2407,18 +2406,19 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Format a reading with the selected meter's unit.
+   * Display a grouped reading rounded to three decimal places.
    *
    * @param {number} value Meter value.
+   * @param {string} [unit] Unit label, defaulting to the selected meter's unit.
    * @returns {string} Localized display value.
    */
-  _formatReading(value) {
-    const number = this._formatNumber(value);
-    return this._data?.unit ? `${number} ${this._data.unit}` : number;
+  _formatReading(value, unit = this._data?.unit) {
+    const number = this._formatNumber(value, 3);
+    return unit ? `${number} ${unit}` : number;
   }
 
   /**
-   * Format a converted register value without exposing floating-point noise.
+   * Display a converted reading to three decimal places when available.
    *
    * @param {number | null | undefined} value Converted value, if available.
    * @param {string} unit Converted unit.
@@ -2428,35 +2428,34 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     if (!Number.isFinite(value)) {
       return this._t.statisticsReadingUnavailable;
     }
-    const number = new Intl.NumberFormat(this._locale, {
-      maximumSignificantDigits: 15,
-      useGrouping: true,
-    }).format(value);
-    return `${number} ${unit}`;
+    return this._formatReading(value, unit);
   }
 
   /**
    * Format a number for display with locale-specific grouping.
    *
    * @param {number} value Number to format.
+   * @param {number} [fractionDigits=0] Number of decimal places to display.
    * @returns {string} Localized display number.
    */
-  _formatNumber(value) {
+  _formatNumber(value, fractionDigits = 0) {
     return new Intl.NumberFormat(this._locale, {
-      maximumFractionDigits: 20,
+      minimumFractionDigits: fractionDigits,
+      maximumFractionDigits: fractionDigits,
+      roundingMode: "halfExpand",
       useGrouping: true,
     }).format(value);
   }
 
   /**
-   * Format a number for input without thousands separators.
+   * Format a number for input with round-trip precision and without grouping.
    *
    * @param {number} value Number to format.
    * @returns {string} Localized input number.
    */
   _formatInputNumber(value) {
     return new Intl.NumberFormat(this._locale, {
-      maximumFractionDigits: 20,
+      maximumSignificantDigits: 21,
       useGrouping: false,
     }).format(value);
   }
@@ -2527,7 +2526,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
   }
 
   /**
-   * Render the copyable statistic IDs and the conversion checkbox for gas.
+   * Render statistic references and the secondary unit selection.
    *
    * @returns {string} Reference HTML or an empty string.
    */
@@ -2535,27 +2534,37 @@ class ManualEnergyMeteringPanel extends HTMLElement {
     if (!this._data?.statistic_id) {
       return "";
     }
-    const converted = this._data.converted_statistics;
-    const label = converted
-      ? this._t.energyStatisticWithUnit.replace("{unit}", this._data.unit)
-      : this._t.energyStatistic;
+    const t = this._t;
+    const statistics = this._data.secondary_statistics || {};
+    const units = (this._data.available_units || []).filter(
+      (unit) => unit !== this._data.unit
+    );
+    const open = this.shadowRoot.querySelector(".secondary-entities")?.open
+      ?? Boolean(Object.keys(statistics).length);
     return `
       <div class="statistic-reference">
-        <span>${this._escape(label)}</span>
-        <code>${this._escape(this._data.statistic_id)}</code>
+        <span>${this._escape(t.primaryEntity.replace("{unit}", this._data.unit))}</span>
+        <code title="${this._escapeAttribute(t.energyStatistic)}">${this._escape(this._data.statistic_id)}</code>
       </div>
-      ${converted ? `
-        <label class="converted-statistics-option">
-          <input id="converted-statistics" type="checkbox"
-            ${converted.statistic_id ? "checked" : ""} />
-          ${this._escape(this._t.convertedGasStatistic.replace("{unit}", converted.unit))}
-        </label>
-        ${converted.statistic_id ? `
-          <div class="statistic-reference">
-            <span>${this._escape(this._t.energyStatisticWithUnit.replace("{unit}", converted.unit))}</span>
-            <code>${this._escape(converted.statistic_id)}</code>
+      ${units.length ? `
+        <details class="secondary-entities" ${open ? "open" : ""}>
+          <summary>${this._escape(t.secondaryEntities)}</summary>
+          <div class="secondary-unit-options">
+            ${units.map((unit) => `
+              <label class="secondary-unit-option">
+                <input type="checkbox" data-secondary-unit="${this._escapeAttribute(unit)}"
+                  ${statistics[unit] ? "checked" : ""} />
+                ${this._escape(unit)}
+              </label>
+            `).join("")}
           </div>
-        ` : ""}
+        </details>
+        ${Object.entries(statistics).map(([unit, id]) => `
+          <div class="statistic-reference">
+            <span>${this._escape(t.convertedValue.replace("{unit}", unit))}</span>
+            <code title="${this._escapeAttribute(t.energyStatistic)}">${this._escape(id)}</code>
+          </div>
+        `).join("")}
       ` : ""}
     `;
   }
@@ -2682,14 +2691,21 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         overflow-wrap: anywhere;
         user-select: all;
       }
-      .converted-statistics-option {
+      .secondary-entities { margin-top: 14px; }
+      .secondary-entities summary { cursor: pointer; }
+      .secondary-unit-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+        gap: 10px 14px;
+        padding-top: 12px;
+      }
+      .secondary-unit-option {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        margin-top: 14px;
         cursor: pointer;
       }
-      .converted-statistics-option input {
+      .secondary-unit-option input {
         width: 18px;
         height: 18px;
         margin: 0;
@@ -2977,8 +2993,12 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         border-top: 1px solid var(--divider-color);
       }
       .readings-table.with-converted-values {
-        --reading-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr)) 230px;
+        --reading-columns: minmax(170px, 1.2fr) repeat(calc(1 + var(--secondary-column-count)), minmax(125px, 1fr)) 230px;
+        overflow-x: auto;
         overflow-wrap: anywhere;
+      }
+      .with-converted-values > [role="row"] {
+        min-width: calc(610px + var(--secondary-column-count) * 143px);
       }
       .table-header, .reading-row {
         display: grid;
@@ -3000,6 +3020,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
       .table-header + .reading-row { border-top: 0; }
       .reading-date { font-variant-numeric: tabular-nums; }
       .reading-value { font-size: 1.05rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+      .reading-unit { text-transform: none; }
       .actions-heading { text-align: right; }
       .row-actions { display: flex; justify-content: flex-end; gap: 8px; }
       .action-button { min-height: 38px; padding: 0 11px; background: var(--secondary-background-color); color: var(--primary-text-color); }
@@ -3065,6 +3086,7 @@ class ManualEnergyMeteringPanel extends HTMLElement {
         }
         .with-converted-values .reading-row {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+          min-width: 0;
         }
         .with-converted-values .reading-date,
         .with-converted-values .row-actions {
@@ -3079,7 +3101,6 @@ class ManualEnergyMeteringPanel extends HTMLElement {
           font-size: 0.72rem;
           font-weight: 800;
           letter-spacing: 0.05em;
-          text-transform: uppercase;
         }
         .row-actions { justify-content: stretch; }
         .action-button { flex: 1; }

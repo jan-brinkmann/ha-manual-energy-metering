@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -33,14 +33,18 @@ from .const import (
     CONF_UNIT,
     DOMAIN,
     METER_TYPE_GAS,
-    METER_TYPE_WATER,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
-    UNIT_CUBIC_METERS,
     UNIT_KWH,
     UNIT_LITERS,
 )
-from .csv_transfer import CsvTransferError, GasConversion, convert_meter_value
+from .csv_transfer import (
+    CsvTransferError,
+    GasConversion,
+    convert_meter_value,
+    csv_unit_options,
+    meter_unit_class,
+)
 from .interpolation import (
     DuplicateTimestampError,
     HourlyConsumption,
@@ -48,7 +52,7 @@ from .interpolation import (
     Reading,
     changed_hourly_statistics,
     hourly_consumption,
-    interpolate_value,
+    interpolate_ordered_value,
     remove_reading,
     replace_reading,
     upsert_reading,
@@ -121,7 +125,15 @@ class ManualEnergyMetering:
         self._statistics_baseline: float | None = None
         self._statistics_excluded_hours: set[datetime] = set()
         self._statistics_import_source: str | None = None
-        self.converted_statistics_enabled = False
+        self.available_secondary_units = csv_unit_options(
+            self.meter_type,
+            self.unit,
+            allow_gas_conversion=self.gas_conversion is not None,
+        )[1:]
+        self._secondary_statistics: dict[str, bool] = {}
+        self.async_update_secondary_sensor: (
+            Callable[[str, bool], Awaitable[None]] | None
+        ) = None
 
     @property
     def statistic_id(self) -> str:
@@ -135,20 +147,46 @@ class ManualEnergyMetering:
 
     @property
     def converted_statistics_unit(self) -> str | None:
-        """Return the offered unit in the other gas quantity, if applicable."""
+        """Return the unit formerly offered by the single gas conversion toggle."""
         if self.gas_conversion is None:
             return None
         return UNIT_KWH if self.unit_class == "volume" else UNIT_LITERS
 
     @property
+    def converted_statistics_enabled(self) -> bool:
+        """Return the legacy gas toggle's current state."""
+        return self.converted_statistics_unit in self.secondary_units
+
+    @property
+    def secondary_units(self) -> tuple[str, ...]:
+        """Return enabled secondary units in the order used by the panel."""
+        return tuple(
+            unit for unit in self.available_secondary_units
+            if self._secondary_statistics.get(unit)
+        )
+
+    @property
+    def disabled_secondary_units(self) -> tuple[str, ...]:
+        """Return previously selected units whose derived state must be removed."""
+        return tuple(
+            unit for unit, enabled in self._secondary_statistics.items() if not enabled
+        )
+
+    def secondary_statistic_id(self, unit: str) -> str:
+        """Return a case-safe statistic ID, preserving the original gas ID."""
+        if unit == self.converted_statistics_unit:
+            return self.converted_statistic_id
+        suffix = {"mWh": "milliwh", "MWh": "megawh"}.get(unit, unit.lower())
+        return f"{self.statistic_id}_secondary_{suffix.replace('³', '3')}"
+
+    def secondary_sensor_id(self, unit: str) -> str:
+        """Return the registry unique ID for the secondary sensor."""
+        return self.secondary_statistic_id(unit).split(":", 1)[1]
+
+    @property
     def unit_class(self) -> str:
         """Return the recorder unit class for the configured meter unit."""
-        if self.meter_type == METER_TYPE_WATER or (
-            self.meter_type == METER_TYPE_GAS
-            and self.unit in (UNIT_LITERS, UNIT_CUBIC_METERS)
-        ):
-            return "volume"
-        return "energy"
+        return meter_unit_class(self.unit)
 
     @property
     def readings(self) -> tuple[Reading, ...]:
@@ -177,7 +215,25 @@ class ManualEnergyMetering:
 
     def value_at(self, timestamp: datetime) -> float | None:
         """Return the linearly interpolated reading at a timestamp."""
-        return interpolate_value(self._readings, timestamp)
+        return interpolate_ordered_value(self._readings, timestamp)
+
+    def is_interpolating_at(self, timestamp: datetime) -> bool:
+        """Return whether the timestamp lies between the first and last readings."""
+        return bool(
+            self._readings
+            and self._readings[0].timestamp < timestamp < self._readings[-1].timestamp
+        )
+
+    def convert_register(self, value: float, unit: str) -> float | None:
+        """Convert an absolute reading, returning None if it cannot be represented."""
+        try:
+            return convert_meter_value(
+                value, self.meter_type, self.unit, unit,
+                gas_conversion=self.gas_conversion,
+            )
+        except CsvTransferError:
+            # The absolute register can overflow even when its differences fit.
+            return None
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
@@ -192,7 +248,7 @@ class ManualEnergyMetering:
         return remove_listener
 
     async def async_load(self) -> None:
-        """Load saved readings and rebuild converted history if factors changed."""
+        """Load readings and restore current or legacy secondary statistics."""
         stored = await self._store.async_load()
         if not stored:
             return
@@ -236,82 +292,150 @@ class ManualEnergyMetering:
         self._statistics_import_source = (
             source.strip() if isinstance(source, str) and source.strip() else None
         )
-        if self.gas_conversion is not None and "converted_statistics" in stored:
+        await self._async_restore_secondary_statistics(stored)
+
+    async def _async_restore_secondary_statistics(self, stored: dict[str, Any]) -> None:
+        """Restore selections and reconcile missing, outdated, or removed statistics."""
+        legacy_unit = self.converted_statistics_unit
+        migrate_legacy = (
+            "secondary_statistics" not in stored
+            and "converted_statistics" in stored
+            and legacy_unit is not None
+        )
+        if migrate_legacy:
+            assert legacy_unit is not None
             saved_conversion = stored["converted_statistics"]
-            if saved_conversion is None:
-                # Repeat a saved removal if shutdown interrupted the recorder.
-                get_instance(self.hass).async_clear_statistics(
-                    [self.converted_statistic_id]
-                )
-            elif (
-                saved_conversion == self.gas_conversion.as_input()
-                and await async_list_statistic_ids(
-                    self.hass, {self.converted_statistic_id}
-                )
-            ):
-                self.converted_statistics_enabled = True
-            else:
-                await self.async_set_converted_statistics(True)
+            self._secondary_statistics = {legacy_unit: saved_conversion is not None}
+        else:
+            saved_conversion = stored.get("gas_conversion")
+            selections = stored.get("secondary_statistics", {})
+            if isinstance(selections, dict):
+                self._secondary_statistics = {
+                    unit: selected
+                    for unit, selected in selections.items()
+                    if unit in self.available_secondary_units
+                    and isinstance(selected, bool)
+                }
 
-    async def async_set_converted_statistics(self, enabled: bool) -> None:
-        """Persist the gas option and replace or remove its recorder statistic."""
-        if self.gas_conversion is None:
-            raise ReadingError(
-                "not_gas_meter", "Converted statistics are only available for gas."
+        existing_ids: set[str] = set()
+        active_units = self.secondary_units
+        if active_units:
+            existing_ids = {
+                item["statistic_id"]
+                for item in await async_list_statistic_ids(
+                    self.hass,
+                    {self.secondary_statistic_id(unit) for unit in active_units},
+                )
+            }
+        factors_changed = (
+            self.gas_conversion is not None
+            and saved_conversion != self.gas_conversion.as_input()
+        )
+        rebuild = tuple(
+            unit
+            for unit in active_units
+            if self.secondary_statistic_id(unit) not in existing_ids
+            or (factors_changed and meter_unit_class(unit) != self.unit_class)
+        )
+        if rebuild:
+            statistics = await self.hass.async_add_executor_job(
+                self._build_secondary_statistics, rebuild
             )
-        async with self._lock:
-            if self.converted_statistics_enabled == enabled:
-                return
-
-            statistics = (
-                await self.hass.async_add_executor_job(self._build_converted_statistics)
-                if enabled
-                else None
+            for unit, rows in statistics.items():
+                async_add_external_statistics(
+                    self.hass, self._statistics_metadata(unit), rows
+                )
+        disabled_units = self.disabled_secondary_units
+        if disabled_units:
+            # Repeat saved removals if shutdown interrupted the recorder.
+            get_instance(self.hass).async_clear_statistics(
+                [self.secondary_statistic_id(unit) for unit in disabled_units]
             )
+        if migrate_legacy or (factors_changed and active_units):
             await self._async_store_state(
                 self._readings,
                 self._statistics_baseline,
                 self._statistics_excluded_hours,
                 self._statistics_import_source,
-                enabled,
+                self._secondary_statistics,
             )
-            self.converted_statistics_enabled = enabled
-            if statistics is None:
-                get_instance(self.hass).async_clear_statistics(
-                    [self.converted_statistic_id]
+
+    async def async_set_converted_statistics(self, enabled: bool) -> None:
+        """Apply a request from the legacy single gas conversion toggle."""
+        if (unit := self.converted_statistics_unit) is None:
+            raise ReadingError(
+                "not_gas_meter", "Converted statistics are only available for gas."
+            )
+        await self.async_set_secondary_unit(unit, enabled)
+
+    async def async_set_secondary_unit(self, unit: str, enabled: bool) -> None:
+        """Persist a unit selection and add or remove its statistic and sensor."""
+        if unit not in self.available_secondary_units:
+            raise ReadingError(
+                "invalid_secondary_unit", "Invalid secondary meter unit."
+            )
+        async with self._lock:
+            if self._secondary_statistics.get(unit, False) == enabled:
+                if self.async_update_secondary_sensor is not None:
+                    await self.async_update_secondary_sensor(unit, enabled)
+                return
+
+            statistics_by_unit = (
+                await self.hass.async_add_executor_job(
+                    self._build_secondary_statistics, (unit,)
+                )
+                if enabled
+                else {}
+            )
+            selections = {**self._secondary_statistics, unit: enabled}
+            await self._async_store_state(
+                self._readings,
+                self._statistics_baseline,
+                self._statistics_excluded_hours,
+                self._statistics_import_source,
+                selections,
+            )
+            self._secondary_statistics = selections
+            if enabled:
+                async_add_external_statistics(
+                    self.hass, self._statistics_metadata(unit), statistics_by_unit[unit]
                 )
             else:
-                async_add_external_statistics(
-                    self.hass, self._statistics_metadata(converted=True), statistics
+                get_instance(self.hass).async_clear_statistics(
+                    [self.secondary_statistic_id(unit)]
                 )
+            if self.async_update_secondary_sensor is not None:
+                await self.async_update_secondary_sensor(unit, enabled)
 
     async def async_wait_for_pending_writes(self) -> None:
         """Let in-flight reading and option writes finish before a reload."""
         async with self._lock:
             return
 
-    def validate_converted_statistics_factors(self, conversion: GasConversion) -> None:
+    def validate_secondary_statistics_factors(self, conversion: GasConversion) -> None:
         """Raise CsvTransferError if new factors cannot represent the saved history."""
-        unit = self.converted_statistics_unit
-        if not self.converted_statistics_enabled or unit is None:
-            return
         maximum = 0.0
         if len(self._readings) >= 2:
             first = self._readings[0].value
             last = self._readings[-1].value
             baseline = self.statistics_baseline
             maximum = max(last - first, abs(first - baseline), abs(last - baseline))
-        convert_meter_value(
-            maximum, self.meter_type, self.unit, unit, gas_conversion=conversion
-        )
+        for unit in self.secondary_units:
+            if meter_unit_class(unit) != self.unit_class:
+                convert_meter_value(
+                    maximum, self.meter_type, self.unit, unit, gas_conversion=conversion
+                )
 
-    def _build_converted_statistics(self) -> list[StatisticData]:
-        """Recreate all converted hours from the saved readings and baseline."""
-        return self._converted_statistics_rows(
+    def _build_secondary_statistics(
+        self, units: tuple[str, ...]
+    ) -> dict[str, list[StatisticData]]:
+        """Recreate the selected hours and convert them into each requested unit."""
+        buckets = tuple(
             bucket
             for bucket in hourly_consumption(self._readings, self._statistics_baseline)
             if bucket.start not in self._statistics_excluded_hours
         )
+        return {unit: self._converted_statistics_rows(buckets, unit) for unit in units}
 
     async def async_add_reading(self, value: Any, timestamp: Any) -> Reading:
         """Validate, persist, and publish a reading."""
@@ -480,17 +604,16 @@ class ManualEnergyMetering:
             if imported_statistics_source is not None
             else self._statistics_import_source
         )
-        converted_statistics = (
-            self._converted_statistics_rows(statistics_update.upsert)
-            if self.converted_statistics_enabled
-            else None
-        )
+        converted_statistics = {
+            unit: self._converted_statistics_rows(statistics_update.upsert, unit)
+            for unit in self.secondary_units
+        }
         await self._async_store_state(
             updated,
             stored_baseline,
             excluded_hours,
             source,
-            self.converted_statistics_enabled,
+            self._secondary_statistics,
         )
         self._readings = updated
         self._statistics_baseline = stored_baseline
@@ -509,11 +632,11 @@ class ManualEnergyMetering:
                 for bucket in statistics_update.upsert
             ],
         )
-        if converted_statistics is not None:
+        for unit, rows in converted_statistics.items():
             self._async_apply_statistics_update(
-                self._statistics_metadata(converted=True),
+                self._statistics_metadata(unit),
                 statistics_update.delete_starts,
-                converted_statistics,
+                rows,
             )
 
     async def _async_store_state(
@@ -522,9 +645,9 @@ class ManualEnergyMetering:
         baseline: float | None,
         excluded_hours: set[datetime],
         import_source: str | None,
-        converted_statistics_enabled: bool,
+        secondary_statistics: dict[str, bool],
     ) -> None:
-        """Save the readings, statistics history metadata, and gas option together."""
+        """Save readings, history metadata, and secondary selections together."""
         data = {
             "readings": [
                 {"timestamp": item.timestamp.isoformat(), "value": item.value}
@@ -535,19 +658,16 @@ class ManualEnergyMetering:
                 item.isoformat() for item in sorted(excluded_hours)
             ],
             "statistics_import_source": import_source,
+            "secondary_statistics": secondary_statistics,
         }
         if self.gas_conversion is not None:
-            data["converted_statistics"] = (
-                self.gas_conversion.as_input() if converted_statistics_enabled else None
-            )
+            data["gas_conversion"] = self.gas_conversion.as_input()
         await self._store.async_save(data)
 
     def _converted_statistics_rows(
-        self, buckets: Iterable[HourlyConsumption]
+        self, buckets: Iterable[HourlyConsumption], unit: str
     ) -> list[StatisticData]:
         """Convert hourly state and sum, raising a user-facing error on overflow."""
-        unit = self.converted_statistics_unit
-        assert unit is not None
         convert = partial(
             convert_meter_value,
             meter_type=self.meter_type,
@@ -566,7 +686,12 @@ class ManualEnergyMetering:
                 for bucket in buckets
             ]
         except CsvTransferError as err:
-            raise ReadingError("gas_statistics_conversion_failed", str(err)) from err
+            error = (
+                "gas_statistics_conversion_failed"
+                if meter_unit_class(unit) != self.unit_class
+                else "secondary_statistics_conversion_failed"
+            )
+            raise ReadingError(error, str(err)) from err
 
     @callback
     def _async_apply_statistics_update(
@@ -586,26 +711,19 @@ class ManualEnergyMetering:
         if statistics:
             async_add_external_statistics(self.hass, metadata, statistics)
 
-    def _statistics_metadata(self, *, converted: bool = False) -> StatisticMetaData:
-        """Describe the recorded or converted unit for the Energy Dashboard."""
-        unit = self.unit
-        unit_class = self.unit_class
-        statistic_id = self.statistic_id
-        name = self.name
-        if converted:
-            unit = self.converted_statistics_unit
-            assert unit is not None
-            unit_class = "volume" if unit == UNIT_LITERS else "energy"
-            statistic_id = self.converted_statistic_id
-            name = f"{self.name} ({unit})"
+    def _statistics_metadata(self, unit: str | None = None) -> StatisticMetaData:
+        """Describe the primary or a secondary statistic for the Energy Dashboard."""
+        statistic_id = (
+            self.statistic_id if unit is None else self.secondary_statistic_id(unit)
+        )
         return StatisticMetaData(
             has_sum=True,
             mean_type=StatisticMeanType.NONE,
-            name=name,
+            name=self.name if unit is None else f"{self.name} ({unit})",
             source=DOMAIN,
             statistic_id=statistic_id,
-            unit_class=unit_class,
-            unit_of_measurement=unit,
+            unit_class=meter_unit_class(unit or self.unit),
+            unit_of_measurement=unit or self.unit,
         )
 
     def _normalize_timestamp(self, value: Any) -> datetime:

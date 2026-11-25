@@ -2389,7 +2389,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
   }
 
   /**
-   * Format a reading with grouping and an optional unit.
+   * Display a grouped reading rounded to three decimal places.
    *
    * @param {number} value Meter value.
    * @param {string} unit Unit label.
@@ -2397,21 +2397,23 @@ class ManualEnergyMeteringCard extends HTMLElement {
    */
   _formatReading(value, unit) {
     const number = new Intl.NumberFormat(this._locale, {
-      maximumFractionDigits: 20,
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+      roundingMode: "halfExpand",
       useGrouping: true,
     }).format(value);
     return unit ? `${number} ${unit}` : number;
   }
 
   /**
-   * Format a reading for input without thousands separators.
+   * Format a reading for input with round-trip precision and without grouping.
    *
    * @param {number} value Meter value.
    * @returns {string} Localized input value.
    */
   _formatInputReading(value) {
     return new Intl.NumberFormat(this._locale, {
-      maximumFractionDigits: 20,
+      maximumSignificantDigits: 21,
       useGrouping: false,
     }).format(value);
   }

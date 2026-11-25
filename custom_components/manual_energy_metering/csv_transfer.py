@@ -47,17 +47,45 @@ CONF_GAS_CORRECTION_FACTOR = "gas_correction_factor"
 _NUMBER_PATTERN = re.compile(
     r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$"
 )
-# Each group contains a fixed unit or a pair with the 1000-fold larger unit last.
-_UNIT_GROUPS = {
-    "electricity": (("Wh", "kWh"),),
-    "gas": (("kWh", "MWh"), ("L", "m³")),
-    "water": (("L",),),
+# Match Home Assistant's thermochemical calorie, US therm, and US gallon.
+# Scales express one unit in kWh or m³, respectively.
+_ENERGY_SCALES = {
+    "cal": 4.184 / 3_600_000,
+    "Gcal": 4.184e9 / 3_600_000,
+    "GJ": 1e9 / 3_600_000,
+    "GWh": 1e6,
+    "J": 1 / 3_600_000,
+    "kcal": 4184 / 3_600_000,
+    "kJ": 1000 / 3_600_000,
+    "kWh": 1.0,
+    "Mcal": 4_184_000 / 3_600_000,
+    "MJ": 1e6 / 3_600_000,
+    "mWh": 1e-6,
+    "MWh": 1000.0,
+    "thm": 105_480_400 / 3_600_000,
+    "TWh": 1e9,
+    "Wh": 0.001,
 }
-_COMPATIBLE_UNITS = {
-    meter_type: {unit: group for group in groups for unit in group}
-    for meter_type, groups in _UNIT_GROUPS.items()
+_CUBIC_FOOT_IN_CUBIC_METERS = 0.3048**3
+_VOLUME_SCALES = {
+    "CCF": 100 * _CUBIC_FOOT_IN_CUBIC_METERS,
+    "ft³": _CUBIC_FOOT_IN_CUBIC_METERS,
+    "gal": 231 * 0.0254**3,
+    "L": 0.001,
+    "MCF": 1000 * _CUBIC_FOOT_IN_CUBIC_METERS,
+    "m³": 1.0,
 }
-_GAS_UNIT_SCALES = {"L": 0.001, "m³": 1.0, "kWh": 1.0, "MWh": 1000.0}
+METER_UNITS = {
+    "electricity": tuple(_ENERGY_SCALES),
+    "gas": (*(unit for unit in _VOLUME_SCALES if unit != "gal"), *_ENERGY_SCALES),
+    "water": tuple(_VOLUME_SCALES),
+}
+_UNIT_SCALES = _ENERGY_SCALES | _VOLUME_SCALES
+
+
+def meter_unit_class(unit: str) -> str:
+    """Return the recorder unit class of a supported meter unit."""
+    return "volume" if unit in _VOLUME_SCALES else "energy"
 
 
 class CsvTransferError(ValueError):
@@ -162,12 +190,21 @@ def csv_unit_options(
     meter_type: str, source_unit: str, *, allow_gas_conversion: bool = False
 ) -> tuple[str, ...]:
     """Return the source unit first, with both gas quantities when enabled."""
-    meter_units = _COMPATIBLE_UNITS.get(meter_type, {})
-    units = meter_units.get(source_unit, ())
-    choices = (source_unit, *(unit for unit in units if unit != source_unit))
-    if allow_gas_conversion and meter_type == "gas" and units:
-        return (*choices, *(unit for unit in meter_units if unit not in units))
-    return choices
+    meter_units = METER_UNITS.get(meter_type, ())
+    if source_unit not in meter_units:
+        return (source_unit,)
+    source_class = meter_unit_class(source_unit)
+    same_quantity = (
+        unit
+        for unit in meter_units
+        if unit != source_unit and meter_unit_class(unit) == source_class
+    )
+    other_quantity = (
+        unit
+        for unit in meter_units
+        if allow_gas_conversion and meter_unit_class(unit) != source_class
+    )
+    return (source_unit, *same_quantity, *other_quantity)
 
 
 def convert_meter_value(
@@ -179,7 +216,7 @@ def convert_meter_value(
     gas_conversion: GasConversion | None = None,
 ) -> float:
     """Convert a value or raise CsvTransferError for invalid values or units."""
-    meter_units = _COMPATIBLE_UNITS.get(meter_type, {})
+    meter_units = METER_UNITS.get(meter_type, ())
     if source_unit not in meter_units or target_unit not in meter_units:
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
@@ -191,25 +228,27 @@ def convert_meter_value(
         )
     if source_unit == target_unit:
         return numeric_value
-    compatible_units = meter_units[source_unit]
-    if target_unit in compatible_units:
-        factor = 1000.0 if source_unit == compatible_units[-1] else 0.001
-    elif gas_conversion is not None and meter_type == "gas":
+    factor = _UNIT_SCALES[source_unit] / _UNIT_SCALES[target_unit]
+    source_class = meter_unit_class(source_unit)
+    if source_class != meter_unit_class(target_unit):
+        if gas_conversion is None:
+            raise CsvTransferError(
+                "csv_invalid_meter", "This meter unit cannot be converted."
+            )
         energy_per_volume = gas_conversion.kwh_per_cubic_meter
+        if not math.isfinite(energy_per_volume) or energy_per_volume <= 0:
+            raise CsvTransferError(
+                "invalid_gas_conversion", "The gas conversion factor is out of range."
+            )
         factor = (
-            energy_per_volume
-            if "m³" in compatible_units
-            else 1.0 / energy_per_volume
+            factor * energy_per_volume
+            if source_class == "volume"
+            else factor / energy_per_volume
         )
-        factor *= _GAS_UNIT_SCALES[source_unit] / _GAS_UNIT_SCALES[target_unit]
         if not math.isfinite(factor) or factor <= 0:
             raise CsvTransferError(
                 "invalid_gas_conversion", "The gas conversion factor is out of range."
             )
-    else:
-        raise CsvTransferError(
-            "csv_invalid_meter", "This meter unit cannot be converted."
-        )
     converted = numeric_value * factor
     if not math.isfinite(converted):
         raise CsvTransferError(
@@ -444,7 +483,7 @@ def _parse_reading_rows(rows: list[list[str]]) -> MeterCsv:
             "csv_unsupported_version", "Unsupported CSV format version."
         )
     name = validate_meter_name(name)
-    if unit not in _COMPATIBLE_UNITS.get(meter_type, {}):
+    if unit not in METER_UNITS.get(meter_type, ()):
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )
@@ -551,7 +590,7 @@ def _parse_statistics_rows(
             "csv_unsupported_version", "Unsupported CSV format version."
         )
     name = validate_meter_name(name)
-    if unit not in _COMPATIBLE_UNITS.get(meter_type, {}):
+    if unit not in METER_UNITS.get(meter_type, ()):
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )
@@ -634,7 +673,7 @@ def export_meter_csv(
 ) -> str:
     """Serialize all original readings in a stable, spreadsheet-friendly CSV."""
     validated_name = validate_meter_name(name)
-    if unit not in _COMPATIBLE_UNITS.get(meter_type, {}):
+    if unit not in METER_UNITS.get(meter_type, ()):
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )
@@ -675,7 +714,7 @@ def export_statistics_csv(
 ) -> str:
     """Serialize hourly long-term statistics without inventing missing hours."""
     validated_name = validate_meter_name(name)
-    if unit not in _COMPATIBLE_UNITS.get(meter_type, {}):
+    if unit not in METER_UNITS.get(meter_type, ()):
         raise CsvTransferError(
             "csv_invalid_meter", "The meter type and unit are incompatible."
         )

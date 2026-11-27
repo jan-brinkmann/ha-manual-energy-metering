@@ -162,7 +162,7 @@ def _meter_for_entity(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> ManualEnergyMetering | None:
-    """Resolve a card's sensor after checking entity-level permissions."""
+    """Resolve a card's primary sensor after checking entity-level permissions."""
     entity_id = msg["entity_id"]
     if not connection.user.permissions.check_entity(entity_id, POLICY_CONTROL):
         raise Unauthorized(entity_id=entity_id)
@@ -524,7 +524,7 @@ async def websocket_card_add_reading(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Add a reading from a dashboard card for an authorized entity."""
+    """Add a primary meter reading from an authorized dashboard card."""
     if (meter := _meter_for_entity(hass, connection, msg)) is None:
         return
     try:

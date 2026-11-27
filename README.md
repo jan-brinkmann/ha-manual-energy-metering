@@ -237,7 +237,8 @@ the first or after the last reading.
 
 The **Manual Energy Metering** dashboard card lets you enter a reading directly
 from a dashboard. Add it through **Edit dashboard > Add card > Manual Energy
-Metering** and select the meter entity.
+Metering** and select the primary meter entity. Secondary sensors display values
+calculated from the primary meter.
 
 The card editor can show or hide the photo buttons independently of the other
 card content and independently of whether a provider is configured.

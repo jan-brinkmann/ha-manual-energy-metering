@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import (
 )
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
+from homeassistant.util import slugify
 
 from .const import (
     ATTR_LAST_READING,
@@ -39,6 +40,7 @@ from .const import (
     MAX_RECENT_READINGS,
     METER_TYPE_GAS,
     METER_TYPE_WATER,
+    SECONDARY_UNIT_ID_SUFFIXES,
 )
 from .csv_transfer import meter_unit_class
 from .meter import ManualEnergyMetering
@@ -101,7 +103,7 @@ class ManualEnergyMeteringSensor(SensorEntity):
     def __init__(
         self, meter: ManualEnergyMetering, secondary_unit: str | None = None
     ) -> None:
-        """Initialize the sensor using the primary or selected secondary unit."""
+        """Initialize the sensor and suggest distinct IDs for case-sensitive units."""
         self._meter = meter
         self._secondary_unit = secondary_unit
         unit = secondary_unit or meter.unit
@@ -111,6 +113,10 @@ class ManualEnergyMeteringSensor(SensorEntity):
             if secondary_unit is None
             else meter.secondary_sensor_id(unit)
         )
+        suffix = SECONDARY_UNIT_ID_SUFFIXES.get(unit)
+        if secondary_unit is not None and suffix is not None:
+            object_id = slugify(f"{meter.name}_{suffix}")
+            self.entity_id = f"sensor.{object_id}"
         self._attr_native_unit_of_measurement = unit
         self._attr_suggested_unit_of_measurement = unit
         if meter.meter_type == METER_TYPE_WATER:

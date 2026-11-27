@@ -1426,6 +1426,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("Object.assign(existingMetadata, cardMetadata)", card)
         self.assertIn("getConfigElement", card)
         self.assertIn('filter: [{ integration: DOMAIN, domain: "sensor" }]', card)
+        self.assertIn("include_entities: primaryEntities", card)
         self.assertIn("show_name", card)
         self.assertIn("show_last_reading", card)
         self.assertIn("show_last_reading_timestamp", card)

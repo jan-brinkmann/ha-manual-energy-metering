@@ -33,8 +33,10 @@ from .const import (
     CONF_UNIT,
     DOMAIN,
     METER_TYPE_GAS,
+    SECONDARY_UNIT_ID_SUFFIXES,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
+    UNIT_CUBIC_METERS,
     UNIT_KWH,
     UNIT_LITERS,
 )
@@ -46,6 +48,7 @@ from .csv_transfer import (
     meter_unit_class,
 )
 from .interpolation import (
+    DEFAULT_STATISTICS_ABS_TOLERANCE,
     DuplicateTimestampError,
     HourlyConsumption,
     HourlyStatisticsUpdate,
@@ -176,7 +179,7 @@ class ManualEnergyMetering:
         """Return a case-safe statistic ID, preserving the original gas ID."""
         if unit == self.converted_statistics_unit:
             return self.converted_statistic_id
-        suffix = {"mWh": "milliwh", "MWh": "megawh"}.get(unit, unit.lower())
+        suffix = SECONDARY_UNIT_ID_SUFFIXES.get(unit, unit.lower())
         return f"{self.statistic_id}_secondary_{suffix.replace('³', '3')}"
 
     def secondary_sensor_id(self, unit: str) -> str:
@@ -574,8 +577,17 @@ class ManualEnergyMetering:
             baseline = updated[0].value if updated else None
         elif baseline is None:
             baseline = old_readings[0].value
+        reference_unit = UNIT_CUBIC_METERS if self.unit_class == "volume" else UNIT_KWH
         statistics_update = changed_hourly_statistics(
-            old_readings, updated, baseline
+            old_readings,
+            updated,
+            baseline,
+            absolute_tolerance=convert_meter_value(
+                DEFAULT_STATISTICS_ABS_TOLERANCE,
+                self.meter_type,
+                reference_unit,
+                self.unit,
+            ),
         )
 
         if imported_excluded_hours is None:

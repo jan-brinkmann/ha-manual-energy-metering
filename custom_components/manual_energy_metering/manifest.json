@@ -1,6 +1,7 @@
 {
   "domain": "manual_energy_metering",
   "name": "Manual Energy Metering",
+  "categories": ["energy.meters_monitoring"],
   "codeowners": [
     "@jan-brinkmann"
   ],

@@ -227,11 +227,17 @@ def _statistics_reading_bounds(
 async def async_list_exportable_statistics(
     hass: HomeAssistant,
 ) -> list[dict[str, Any]]:
-    """List exportable meters with CSV unit choices ordered by preference."""
+    """List manual readings and statistics from outside this integration."""
     metadata_items = await async_list_statistic_ids(
         hass, statistic_type="sum"
     )
     entity_registry = er.async_get(hass)
+    # Recorder can retain automatic sensor statistics after registry removal.
+    deleted_manual_entities = {
+        entry.entity_id
+        for entry in entity_registry.deleted_entities.values()
+        if entry.platform == DOMAIN
+    }
     manual_meters = _loaded_manual_meters(hass)
     result = [_manual_meter_item(meter) for meter in manual_meters.values()]
     for metadata in metadata_items:
@@ -240,7 +246,11 @@ async def async_list_exportable_statistics(
         if (
             not statistic_id
             or str(metadata.get("source") or "") == DOMAIN
-            or (entity_entry is not None and entity_entry.platform == DOMAIN)
+            or (
+                entity_entry.platform == DOMAIN
+                if entity_entry is not None
+                else statistic_id in deleted_manual_entities
+            )
             or not metadata.get("has_sum")
         ):
             continue

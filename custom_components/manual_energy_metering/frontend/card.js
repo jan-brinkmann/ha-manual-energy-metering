@@ -96,13 +96,13 @@ const TRANSLATIONS = {
     invalidValue: "Enter a non-negative numeric meter reading.",
     noGrouping: "Do not use thousands separators in the meter reading.",
     unavailable: "The selected meter entity is unavailable.",
-    selectEntity: "Select a Manual Energy Metering sensor in the card editor.",
+    selectEntity: "Select a primary Manual Energy Metering sensor in the card editor.",
     genericError: "The meter reading could not be added.",
     invalidImage: "Select a JPEG, PNG, or WebP image.",
     imageTooLarge: "The selected image is too large.",
     imageProcessingFailed: "The image could not be prepared for recognition.",
     editor: {
-      entity: "Meter entity",
+      entity: "Primary meter entity",
       prefill_digits: "Number of digits prefilled from last reading",
       show_name: "Show meter name",
       show_last_reading: "Show last reading",
@@ -188,14 +188,14 @@ const TRANSLATIONS = {
     noGrouping: "Verwende im Zählerstand keine Tausendertrennzeichen.",
     unavailable: "Die ausgewählte Zählerentität ist nicht verfügbar.",
     selectEntity:
-      "Wähle im Karteneditor einen Sensor der Manuellen Energiemessung aus.",
+      "Wähle im Karteneditor den primären Sensor der Manuellen Energiemessung aus.",
     genericError: "Der Zählerstand konnte nicht eingetragen werden.",
     invalidImage: "Wähle ein Bild im Format JPEG, PNG oder WebP aus.",
     imageTooLarge: "Das ausgewählte Bild ist zu groß.",
     imageProcessingFailed:
       "Das Bild konnte nicht für die Erkennung vorbereitet werden.",
     editor: {
-      entity: "Zählerentität",
+      entity: "Primäre Zählerentität",
       prefill_digits: "Anzahl vorausgefüllter Ziffern",
       show_name: "Zählername anzeigen",
       show_last_reading: "Letzten Zählerstand anzeigen",
@@ -264,6 +264,19 @@ function normalizeConfig(config) {
   return normalized;
 }
 
+/**
+ * Identify the primary sensor through its reading-card metadata.
+ *
+ * @param {object | undefined} state Home Assistant entity state.
+ * @returns {boolean} Whether the sensor represents a primary meter.
+ */
+function isPrimaryMeter(state) {
+  return Boolean(
+    state?.entity_id?.startsWith("sensor.") &&
+      String(state.attributes?.statistic_id ?? "").startsWith(`${DOMAIN}:`)
+  );
+}
+
 /** Configure a Manual Energy Metering dashboard card. */
 class ManualEnergyMeteringCardEditor extends HTMLElement {
   /** Create the editor's isolated shadow DOM. */
@@ -273,7 +286,7 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
   }
 
   /**
-   * Supply current Home Assistant state to the editor form.
+   * Update Home Assistant state and refresh the list of primary meters.
    *
    * @param {object} value Home Assistant frontend state.
    */
@@ -282,6 +295,7 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
     const form = this.shadowRoot.querySelector("ha-form");
     if (form) {
       form.hass = value;
+      this._updateFormSchema(form);
     } else {
       this._render();
     }
@@ -321,13 +335,48 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
       show_current_time_button: this._config.show_current_time_button,
       show_history_link: this._config.show_history_link,
     };
+    this._updateFormSchema(form);
+    form.computeLabel = (schema) =>
+      TRANSLATIONS[languageFor(this._hass)].editor[schema.name] || schema.name;
+    form.addEventListener("value-changed", (event) => {
+      const config = normalizeConfig({
+        ...this._config,
+        ...event.detail.value,
+      });
+      this._config = config;
+      this.dispatchEvent(
+        new CustomEvent("config-changed", {
+          detail: { config },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    });
+  }
+
+  /**
+   * Configure the form with an entity picker limited to primary sensors.
+   *
+   * @param {HTMLElement} form Home Assistant schema form.
+   */
+  _updateFormSchema(form) {
+    const states = this._hass?.states || {};
+    const primaryEntities = Object.keys(states)
+      .filter((entityId) => isPrimaryMeter(states[entityId]))
+      .sort();
+    const previousEntities = form.schema?.[0]?.selector.entity.include_entities;
+    if (previousEntities?.join(",") === primaryEntities.join(",")) {
+      return;
+    }
     form.schema = [
       {
         name: "entity",
         required: true,
+        disabled: primaryEntities.length === 0,
         selector: {
           entity: {
             filter: [{ integration: DOMAIN, domain: "sensor" }],
+            include_entities: primaryEntities,
           },
         },
       },
@@ -345,22 +394,6 @@ class ManualEnergyMeteringCardEditor extends HTMLElement {
       { name: "show_current_time_button", selector: { boolean: {} } },
       { name: "show_history_link", selector: { boolean: {} } },
     ];
-    form.computeLabel = (schema) =>
-      TRANSLATIONS[languageFor(this._hass)].editor[schema.name] || schema.name;
-    form.addEventListener("value-changed", (event) => {
-      const config = normalizeConfig({
-        ...this._config,
-        ...event.detail.value,
-      });
-      this._config = config;
-      this.dispatchEvent(
-        new CustomEvent("config-changed", {
-          detail: { config },
-          bubbles: true,
-          composed: true,
-        })
-      );
-    });
   }
 }
 
@@ -713,7 +746,7 @@ class ManualEnergyMeteringCard extends HTMLElement {
     };
   }
 
-  /** Render the complete card and reconnect DOM event handlers. */
+  /** Render the reading form for a primary sensor or show its configuration status. */
   _render() {
     if (!this._config) {
       return;
@@ -723,12 +756,25 @@ class ManualEnergyMeteringCard extends HTMLElement {
     }
     const t = this._t;
     const data = this._stateData();
+    const hasEntity = Boolean(this._config.entity);
+    if (hasEntity && !isPrimaryMeter(data.state)) {
+      const message =
+        !data.state || data.state.state === "unavailable"
+          ? t.unavailable
+          : t.selectEntity;
+      this.shadowRoot.innerHTML = `
+        <style>${this._styles()}</style>
+        <ha-card>
+          <div class="content" role="status">${this._escape(message)}</div>
+        </ha-card>
+      `;
+      return;
+    }
     const showName = this._config.show_name;
     const showLastReading = this._config.show_last_reading;
     const showLastReadingTimestamp =
       this._config.show_last_reading_timestamp;
     const showPhotoButtons = this._config.show_photo_buttons;
-    const hasEntity = Boolean(this._config.entity);
     const available = Boolean(
       data.state && data.state.state !== "unavailable"
     );
@@ -1432,13 +1478,13 @@ class ManualEnergyMeteringCard extends HTMLElement {
     this._historyLoading = false;
   }
 
-  /** Resolve the configured entity to its meter management URL for admins. */
+  /** Resolve a primary sensor to its meter management URL for admins. */
   _resolveHistoryLink() {
     const entityId = this._config?.entity;
     if (
       !this._config?.show_history_link ||
       !this._hass?.user?.is_admin ||
-      !entityId ||
+      !isPrimaryMeter(this._hass?.states?.[entityId]) ||
       this._historyLoading ||
       this._historyEntity === entityId
     ) {
@@ -2246,13 +2292,14 @@ class ManualEnergyMeteringCard extends HTMLElement {
   }
 
   /**
-   * Validate and submit the current reading through the card WebSocket API.
+   * Validate and submit a reading for an available primary sensor.
    *
    * @param {SubmitEvent} event Reading form submission.
    */
   async _submit(event) {
     event.preventDefault();
-    if (this._busy || !this._config.entity) {
+    const { state } = this._stateData();
+    if (this._busy || !isPrimaryMeter(state) || state.state === "unavailable") {
       return;
     }
     const valueInput = this.shadowRoot.querySelector("#value");
@@ -2914,8 +2961,7 @@ const cardMetadata = {
   documentationURL:
     "https://github.com/jan-brinkmann/ha-manual-energy-metering#dashboard-card",
   getEntitySuggestion: (hass, entityId) => {
-    const statisticId = hass.states[entityId]?.attributes?.statistic_id;
-    if (!String(statisticId || "").startsWith(`${DOMAIN}:`)) {
+    if (!isPrimaryMeter(hass.states[entityId])) {
       return null;
     }
     return {

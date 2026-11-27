@@ -12,6 +12,7 @@ from operator import attrgetter
 ONE_HOUR = timedelta(hours=1)
 LATEST_READINGS_PAGE_SIZE = 10
 ARCHIVE_READINGS_PAGE_SIZE = 100
+DEFAULT_STATISTICS_ABS_TOLERANCE = 1e-12
 
 
 class DuplicateTimestampError(ValueError):
@@ -232,13 +233,13 @@ def _range_is_covered(
     )
 
 
-def _same_number(previous: float, current: float) -> bool:
-    """Return whether two calculated values differ only by floating noise."""
+def _same_number(previous: float, current: float, absolute_tolerance: float) -> bool:
+    """Compare calculated values with an absolute tolerance in their own unit."""
     return math.isclose(
         previous,
         current,
         rel_tol=1e-12,
-        abs_tol=1e-12,
+        abs_tol=absolute_tolerance,
     )
 
 
@@ -247,6 +248,7 @@ def _changed_interpolation_hour_starts(
     old_timestamps: Sequence[datetime],
     new_ordered: Sequence[Reading],
     new_timestamps: Sequence[datetime],
+    absolute_tolerance: float,
 ) -> set[datetime]:
     """Return hours touched by ranges where the piecewise curves differ."""
     breakpoints = sorted(set(old_timestamps) | set(new_timestamps))
@@ -261,29 +263,31 @@ def _changed_interpolation_hour_starts(
             old_end = _interpolate_ordered(old_ordered, old_timestamps, end)
             new_start = _interpolate_ordered(new_ordered, new_timestamps, start)
             new_end = _interpolate_ordered(new_ordered, new_timestamps, end)
-            if _same_number(old_start, new_start) and _same_number(
-                old_end, new_end
-            ):
+            if _same_number(
+                old_start, new_start, absolute_tolerance
+            ) and _same_number(old_end, new_end, absolute_tolerance):
                 continue
         affected_starts.update(_range_hour_starts(start, end))
     return affected_starts
 
 
 def _same_hourly_value(
-    previous: HourlyConsumption, current: HourlyConsumption
+    previous: HourlyConsumption, current: HourlyConsumption, absolute_tolerance: float
 ) -> bool:
     """Return whether two rows are equal within floating-point noise."""
     return _same_number(
-        previous.consumption, current.consumption
-    ) and _same_number(previous.cumulative, current.cumulative)
+        previous.consumption, current.consumption, absolute_tolerance
+    ) and _same_number(previous.cumulative, current.cumulative, absolute_tolerance)
 
 
 def changed_hourly_statistics(
     old_readings: Iterable[Reading],
     new_readings: Iterable[Reading],
     baseline_value: float | None = None,
+    *,
+    absolute_tolerance: float = DEFAULT_STATISTICS_ABS_TOLERANCE,
 ) -> HourlyStatisticsUpdate:
-    """Return only hourly rows whose interpolated value actually changes."""
+    """Return changed hourly rows using an absolute tolerance in the reading unit."""
     old_ordered = validate_readings(old_readings)
     new_ordered = validate_readings(new_readings)
     if baseline_value is None:
@@ -295,7 +299,7 @@ def changed_hourly_statistics(
     old_timestamps = [reading.timestamp for reading in old_ordered]
     new_timestamps = [reading.timestamp for reading in new_ordered]
     affected_starts = _changed_interpolation_hour_starts(
-        old_ordered, old_timestamps, new_ordered, new_timestamps
+        old_ordered, old_timestamps, new_ordered, new_timestamps, absolute_tolerance
     )
     if not affected_starts:
         return HourlyStatisticsUpdate((), ())
@@ -312,7 +316,8 @@ def changed_hourly_statistics(
         if old_value is not None and new_value is None:
             delete_starts.append(start)
         elif new_value is not None and (
-            old_value is None or not _same_hourly_value(old_value, new_value)
+            old_value is None
+            or not _same_hourly_value(old_value, new_value, absolute_tolerance)
         ):
             upsert.append(new_value)
 

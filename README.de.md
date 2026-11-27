@@ -250,7 +250,8 @@ Ablesung wird kein Verbrauch extrapoliert.
 
 Mit der Dashboard-Karte **Manuelle Energiemessung** kannst du einen Zählerstand
 direkt im Dashboard eintragen. Füge sie über **Dashboard bearbeiten > Karte
-hinzufügen > Manuelle Energiemessung** hinzu und wähle die Zählerentität.
+hinzufügen > Manuelle Energiemessung** hinzu und wähle die primäre Zählerentität.
+Sekundäre Sensoren zeigen Werte an, die aus dem primären Zähler berechnet werden.
 
 Im Karteneditor können die Foto-Schaltflächen unabhängig vom übrigen
 Karteninhalt und unabhängig von einer Provider-Konfiguration ein- oder

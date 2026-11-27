@@ -33,7 +33,6 @@ from .csv_transfer import (
     GasConversion,
     convert_meter_value,
     convert_readings_unit,
-    csv_unit_options,
     export_filename,
     export_meter_csv,
     export_statistics_csv,
@@ -52,6 +51,7 @@ WS_DELETE_READING = f"{DOMAIN}/readings/delete"
 WS_CARD_ADD_READING = f"{DOMAIN}/card/add"
 WS_EXPORT_READINGS = f"{DOMAIN}/readings/export"
 WS_SET_CONVERTED_STATISTICS = f"{DOMAIN}/statistics/set_converted"
+WS_SET_SECONDARY_UNIT = f"{DOMAIN}/statistics/set_secondary_unit"
 WS_LIST_EXPORT_STATISTICS = f"{DOMAIN}/statistics/list"
 WS_EXPORT_STATISTIC = f"{DOMAIN}/statistics/export"
 PAGE_SCHEMA = vol.All(vol.Coerce(int), vol.Range(min=1))
@@ -66,6 +66,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_card_add_reading)
     websocket_api.async_register_command(hass, websocket_export_readings)
     websocket_api.async_register_command(hass, websocket_set_converted_statistics)
+    websocket_api.async_register_command(hass, websocket_set_secondary_unit)
     websocket_api.async_register_command(
         hass, websocket_list_export_statistics
     )
@@ -95,35 +96,32 @@ def _meter_for_message(
 def _meter_payload(
     meter: ManualEnergyMetering, requested_page: int | None = None
 ) -> dict[str, Any]:
-    """Serialize one reading page, including converted registers when enabled."""
-    readings, page, page_count = paginate_readings(
-        meter.readings, requested_page
-    )
+    """Serialize a reading page and the register values for each secondary unit."""
+    all_readings = meter.readings
+    readings, page, page_count = paginate_readings(all_readings, requested_page)
     converted_unit = meter.converted_statistics_unit
+    secondary_units = meter.secondary_units
     reading_items = []
     for reading in readings:
-        item: dict[str, str | float | None] = {
+        converted_values = {
+            unit: meter.convert_register(reading.value, unit) for unit in secondary_units
+        }
+        item = {
             ATTR_TIMESTAMP: reading.timestamp.isoformat(),
             ATTR_VALUE: reading.value,
+            "converted_values": converted_values,
         }
-        if converted_unit is not None and meter.converted_statistics_enabled:
-            try:
-                item["converted_value"] = convert_meter_value(
-                    reading.value,
-                    meter.meter_type,
-                    meter.unit,
-                    converted_unit,
-                    gas_conversion=meter.gas_conversion,
-                )
-            except CsvTransferError:
-                # Absolute readings can overflow even when their differences fit.
-                item["converted_value"] = None
+        if converted_unit is not None and converted_unit in converted_values:
+            item["converted_value"] = converted_values[converted_unit]
         reading_items.append(item)
 
     return {
         "name": meter.name,
         CONF_METER_TYPE: meter.meter_type,
         ATTR_STATISTIC_ID: meter.statistic_id,
+        "secondary_statistics": {
+            unit: meter.secondary_statistic_id(unit) for unit in secondary_units
+        },
         "converted_statistics": (
             {
                 "unit": converted_unit,
@@ -137,12 +135,8 @@ def _meter_payload(
             else None
         ),
         "unit": meter.unit,
-        "available_units": csv_unit_options(
-            meter.meter_type,
-            meter.unit,
-            allow_gas_conversion=meter.gas_conversion is not None,
-        ),
-        "reading_count": len(meter.readings),
+        "available_units": (meter.unit, *meter.available_secondary_units),
+        "reading_count": len(all_readings),
         "page": page,
         "page_count": page_count,
         "is_latest_page": page == 1,
@@ -168,7 +162,7 @@ def _meter_for_entity(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> ManualEnergyMetering | None:
-    """Resolve a card's sensor after checking entity-level permissions."""
+    """Resolve a card's primary sensor after checking entity-level permissions."""
     entity_id = msg["entity_id"]
     if not connection.user.permissions.check_entity(entity_id, POLICY_CONTROL):
         raise Unauthorized(entity_id=entity_id)
@@ -197,7 +191,13 @@ def _meter_for_entity(
             msg["id"], "entry_not_loaded", "The selected meter is not loaded."
         )
         return None
-    return entry.runtime_data
+    meter: ManualEnergyMetering = entry.runtime_data
+    if entity_entry.unique_id != meter.meter_id:
+        connection.send_error(
+            msg["id"], "entity_not_found", "Select the primary meter entity."
+        )
+        return None
+    return meter
 
 
 def _send_reading_error(
@@ -251,6 +251,33 @@ async def websocket_set_converted_statistics(
         return
     try:
         await meter.async_set_converted_statistics(msg["enabled"])
+    except ReadingError as err:
+        _send_reading_error(connection, msg, err)
+        return
+    connection.send_result(msg["id"], _meter_payload(meter, msg.get("page")))
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_SET_SECONDARY_UNIT,
+        vol.Required(CONF_CONFIG_ENTRY_ID): str,
+        vol.Required(CONF_UNIT): str,
+        vol.Required("enabled"): bool,
+        vol.Optional("page"): PAGE_SCHEMA,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_secondary_unit(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Select or deselect a secondary unit and return the current reading page."""
+    if (meter := _meter_for_message(hass, connection, msg)) is None:
+        return
+    try:
+        await meter.async_set_secondary_unit(msg[CONF_UNIT], msg["enabled"])
     except ReadingError as err:
         _send_reading_error(connection, msg, err)
         return
@@ -497,7 +524,7 @@ async def websocket_card_add_reading(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Add a reading from a dashboard card for an authorized entity."""
+    """Add a primary meter reading from an authorized dashboard card."""
     if (meter := _meter_for_entity(hass, connection, msg)) is None:
         return
     try:

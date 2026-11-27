@@ -520,12 +520,10 @@ class CsvTransferTests(unittest.TestCase):
                 )
                 self.assertEqual(imported.readings[0].timestamp, reading.timestamp)
                 self.assertEqual(imported.readings[0].value, reading.value)
-                self.assertEqual(
-                    csv_unit_options("gas", larger), (larger, smaller)
-                )
-                self.assertEqual(
-                    csv_unit_options("gas", smaller), (smaller, larger)
-                )
+                for source, target in ((larger, smaller), (smaller, larger)):
+                    options = csv_unit_options("gas", source)
+                    self.assertEqual(options[0], source)
+                    self.assertIn(target, options)
 
                 converted = convert_meter_csv_unit(imported, smaller)
                 self.assertEqual(converted.readings[0].value, 12375)
@@ -572,7 +570,7 @@ class CsvTransferTests(unittest.TestCase):
             ],
         )
         liters = parse_meter_csv_bytes(content.encode())
-        self.assertEqual(csv_unit_options("gas", liters.unit), ("L", "m³"))
+        self.assertIn("m³", csv_unit_options("gas", liters.unit))
 
         converted = convert_meter_csv_unit(liters, "m³")
         self.assertEqual(converted.unit, "m³")
@@ -608,15 +606,13 @@ class CsvTransferTests(unittest.TestCase):
         )
         self.assertEqual(factors.kwh_per_cubic_meter, 10.0)
         self.assertAlmostEqual(GasConversion.from_input({}).kwh_per_cubic_meter, 10.45)
-        self.assertEqual(
-            csv_unit_options("gas", "m³", allow_gas_conversion=True),
-            ("m³", "L", "kWh", "MWh"),
-        )
         for source, source_value, target, target_value in (
             ("m³", 100.0, "kWh", 1000.0),
             ("kWh", 1000.0, "m³", 100.0),
             ("L", 100_000.0, "MWh", 1.0),
             ("MWh", 1.0, "L", 100_000.0),
+            ("CCF", 1.0, "MJ", 101.9406477312),
+            ("MJ", 101.9406477312, "CCF", 1.0),
         ):
             with self.subTest(source=source, target=target):
                 self.assertAlmostEqual(
@@ -669,17 +665,48 @@ class CsvTransferTests(unittest.TestCase):
                     )
                 self.assertEqual(caught.exception.code, "invalid_gas_conversion")
 
-    def test_water_csv_unit_cannot_be_changed(self) -> None:
-        """Keep water CSV files in liters, including during reimport."""
+    def test_water_csv_converts_only_to_volume_units(self) -> None:
+        """Import water readings in US gallons and reject incompatible energy units."""
+        timestamp = datetime(2026, 1, 1, tzinfo=UTC)
         imported = parse_meter_csv_bytes(
-            export_meter_csv("Water", "water", "L", []).encode()
+            export_meter_csv(
+                "Water", "water", "L", [Reading(timestamp, 3.785411784)]
+            ).encode()
         )
+        converted = convert_meter_csv_unit(imported, "gal")
+        self.assertEqual(converted.unit, "gal")
+        self.assertEqual(converted.readings[0].timestamp, timestamp)
+        self.assertAlmostEqual(converted.readings[0].value, 1.0)
 
-        for target in ("kWh", "m³"):
-            with self.subTest(target=target):
-                with self.assertRaises(CsvTransferError) as caught:
-                    convert_meter_csv_unit(imported, target)
-                self.assertEqual(caught.exception.code, "csv_invalid_meter")
+        with self.assertRaises(CsvTransferError) as caught:
+            convert_meter_csv_unit(imported, "kWh")
+        self.assertEqual(caught.exception.code, "csv_invalid_meter")
+
+    def test_csv_unit_options_and_round_trips_cover_all_meter_units(self) -> None:
+        """Offer exactly the compatible units and convert every unit pair."""
+        energy_units = set("cal Gcal GJ GWh J kcal kJ kWh Mcal MJ mWh MWh thm TWh Wh".split())
+        volume_units = set("CCF ft³ L MCF m³".split())
+        for meter_type, units in (
+            ("electricity", energy_units),
+            ("gas", volume_units | energy_units),
+            ("water", volume_units | {"gal"}),
+        ):
+            for source in units:
+                options = csv_unit_options(meter_type, source, allow_gas_conversion=True)
+                self.assertEqual(options[0], source)
+                self.assertCountEqual(options, units)
+                for target in units:
+                    with self.subTest(meter_type=meter_type, source=source, target=target):
+                        conversion = GasConversion()
+                        converted = convert_meter_value(
+                            123.25, meter_type, source, target, gas_conversion=conversion
+                        )
+                        self.assertAlmostEqual(
+                            convert_meter_value(
+                                converted, meter_type, target, source, gas_conversion=conversion
+                            ),
+                            123.25,
+                        )
 
     def test_import_sorts_rows_chronologically(self) -> None:
         """Sort imported reading rows by their timestamps."""
@@ -1092,7 +1119,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("manual_energy_metering", constants)
         self.assertIn("STORAGE_KEY_PREFIX = DOMAIN", constants)
         self.assertIn("STORAGE_KEY_PREFIX}.{self.meter_id}", meter)
-        self.assertIn("self._attr_unique_id = meter.meter_id", sensor)
+        self.assertIn("else meter.secondary_sensor_id(unit)", sensor)
         self.assertIn("identifiers={(DOMAIN, meter.meter_id)}", sensor)
 
     def test_visible_integration_names(self) -> None:
@@ -1187,9 +1214,9 @@ class IntegrationIdentityTests(unittest.TestCase):
             frontend,
         )
         self.assertIn(
-            'energyStatistic: "Entität für das Energy Dashboard:"', frontend
+            'energyStatistic: "Statistik für das Energy Dashboard"', frontend
         )
-        self.assertIn('energyStatistic: "Entity for the Energy Dashboard:"', frontend)
+        self.assertIn('energyStatistic: "Energy Dashboard statistic"', frontend)
         self.assertIn("${this._renderStatisticReferences()}", frontend)
         self.assertIn("_renderMeterTypeIcon", frontend)
         self.assertIn("mdi:arrow-left", frontend)
@@ -1399,6 +1426,7 @@ class IntegrationIdentityTests(unittest.TestCase):
         self.assertIn("Object.assign(existingMetadata, cardMetadata)", card)
         self.assertIn("getConfigElement", card)
         self.assertIn('filter: [{ integration: DOMAIN, domain: "sensor" }]', card)
+        self.assertIn("include_entities: primaryEntities", card)
         self.assertIn("show_name", card)
         self.assertIn("show_last_reading", card)
         self.assertIn("show_last_reading_timestamp", card)

@@ -37,15 +37,17 @@ from .const import (
     DEFAULT_VISION_MODEL,
     DEFAULT_VISION_PROMPT,
     DOMAIN,
-    MANUAL_METER_UNITS,
     METER_TYPE_GAS,
+    METER_TYPE_WATER,
     METER_TYPES,
     UNIT_KWH,
+    UNIT_LITERS,
 )
 from .csv_transfer import (
     CONF_GAS_CALORIFIC_VALUE,
     CONF_GAS_CORRECTION_FACTOR,
     DEFAULT_GAS_CONVERSION,
+    METER_UNITS,
     STATISTICS_CSV_FORMAT_VERSION,
     CsvTransferError,
     GasConversion,
@@ -191,11 +193,7 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
             self._import_readings = None
             self._import_statistics = None
             self._meter_data = user_input
-            units = MANUAL_METER_UNITS[user_input[CONF_METER_TYPE]]
-            if len(units) > 1:
-                return await self.async_step_unit()
-            self._meter_data[CONF_UNIT] = units[0]
-            return await self.async_step_vision()
+            return await self.async_step_unit()
 
         return self.async_show_form(
             step_id="manual",
@@ -305,7 +303,7 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_unit(
         self, user_input: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Choose the new meter's unit and gas conversion factors when applicable."""
+        """Choose the new meter's primary unit and its gas factors when applicable."""
         meter_type = self._meter_data[CONF_METER_TYPE]
         is_gas = meter_type == METER_TYPE_GAS
         errors: dict[str, str] = {}
@@ -321,12 +319,13 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_vision()
 
         defaults = user_input or {}
+        default_unit = UNIT_LITERS if meter_type == METER_TYPE_WATER else UNIT_KWH
         fields: dict[vol.Marker, Any] = {
             vol.Required(
-                CONF_UNIT, default=defaults.get(CONF_UNIT, UNIT_KWH)
+                CONF_UNIT, default=defaults.get(CONF_UNIT, default_unit)
             ): SelectSelector(
                 SelectSelectorConfig(
-                    options=list(MANUAL_METER_UNITS[meter_type]),
+                    options=list(METER_UNITS[meter_type]),
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             )
@@ -385,7 +384,7 @@ class ManualEnergyMeteringConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                     meter = getattr(entry, "runtime_data", None)
                     if isinstance(meter, ManualEnergyMetering):
-                        meter.validate_converted_statistics_factors(gas_conversion)
+                        meter.validate_secondary_statistics_factors(gas_conversion)
                     updates.update(gas_conversion.as_input())
                 except CsvTransferError:
                     errors["base"] = "invalid_gas_conversion"

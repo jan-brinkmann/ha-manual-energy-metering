@@ -27,7 +27,8 @@
         "description": "Die Exportseite ist Teil deiner eigenen Home-Assistant-Instanz. Es werden keine Zählerdaten an eine externe Webseite oder einen externen Dienst übertragen. Öffne die Seite, wähle einen kompatiblen Zähler aus und wähle bei Bedarf eine der angebotenen CSV-Einheiten."
       },
       "unit": {
-        "title": "Einheit des Zählers auswählen",
+        "title": "Einheit der primären Entität auswählen",
+        "description": "Wähle die Einheit, in der der reale Zähler zählt. In dieser Einheit gibst du später die Zählerstände ein.",
         "data": {
           "unit": "Einheit",
           "gas_calorific_value": "Brennwert",
@@ -97,6 +98,9 @@
     },
     "gas_statistics_conversion_failed": {
       "message": "Der Gasverbrauch konnte mit Brennwert und Zustandszahl dieses Zählers nicht umgerechnet werden."
+    },
+    "secondary_statistics_conversion_failed": {
+      "message": "Die Statistikwerte sind für die gewählte Einheit zu groß."
     },
     "non_monotonic": {
       "message": "Dieser Wert würde den Zähler rückwärts laufen lassen. Korrigiere zuerst den angrenzenden Zählerstand."
